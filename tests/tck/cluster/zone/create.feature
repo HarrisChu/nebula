@@ -184,7 +184,6 @@ Feature: Zone create
       """
     Then the execution should be successful
     # add group with empty zone
-    # TODO should verify the error message.
     When executing query, fill replace holders with cluster_name:
       """
       DROP HOST "{}-storaged-0.{}-storaged-headless.default.svc.cluster.local":9779 FROM ZONE z1;
@@ -195,7 +194,24 @@ Feature: Zone create
       """
       ADD GROUP g1 z1,z2;
       """
+    Then the execution should be successful
+    When executing query:
+      """
+      ADD GROUP g2 z1;
+      """
+    Then the execution should be successful
+    When executing query:
+      """
+      CREATE SPACE s1(partition_num=3, replica_factor=2, vid_type=int64) ON g1
+      """
     Then an ExecutionError should be raised at runtime: Invalid parm!
+    When executing query:
+      """
+      CREATE SPACE s2(partition_num=3, replica_factor=1, vid_type=int64) ON g2
+      """
+    Then an ExecutionError should be raised at runtime: Invalid parm!
+    Then drop the used nebulacluster
+
 
   Scenario: create spaces and check parts
     Given a nebulacluster with 1 graphd and 1 metad and 7 storaged

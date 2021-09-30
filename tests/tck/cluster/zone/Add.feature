@@ -97,12 +97,11 @@ Feature: Zone add
       DROP HOST "{}-storaged-5.{}-storaged-headless.default.svc.cluster.local":9779 FROM ZONE z4;
       """
     Then the execution should be successful
-    # TODO has bug here,don't know the error message.
     When executing query:
       """
       ADD ZONE z4 INTO GROUP g1;
       """
-    Then an ExecutionError should be raised at runtime: Conflict!
+    Then the execution should be successful
     When executing query:
       """
       ADD ZONE z2 INTO GROUP g22;
