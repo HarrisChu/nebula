@@ -15,6 +15,7 @@ folly::SemiFuture<StorageRpcResponse<cpp2::GetNeighborsResponse>> GraphStorageCl
     GraphSpaceID space,
     SessionID session,
     ExecutionPlanID plan,
+    bool profile,
     std::vector<std::string> colNames,
     const std::vector<Row>& vertices,
     const std::vector<EdgeType>& edgeTypes,
@@ -42,7 +43,7 @@ folly::SemiFuture<StorageRpcResponse<cpp2::GetNeighborsResponse>> GraphStorageCl
   }
 
   auto& clusters = status.value();
-  auto common = makeRequestCommon(session, plan);
+  auto common = makeRequestCommon(session, plan, profile);
   std::unordered_map<HostAddr, cpp2::GetNeighborsRequest> requests;
   for (auto& c : clusters) {
     auto& host = c.first;
@@ -491,10 +492,12 @@ folly::SemiFuture<StorageRpcResponse<cpp2::LookupIndexResp>> GraphStorageClient:
     GraphSpaceID space,
     SessionID session,
     ExecutionPlanID plan,
+    bool profile,
     const std::vector<storage::cpp2::IndexQueryContext>& contexts,
     bool isEdge,
     int32_t tagOrEdge,
     const std::vector<std::string>& returnCols,
+    int64_t limit,
     folly::EventBase* evb) {
   // TODO(sky) : instead of isEdge and tagOrEdge to nebula::cpp2::SchemaID for graph layer.
   auto status = getHostParts(space);
@@ -511,7 +514,7 @@ folly::SemiFuture<StorageRpcResponse<cpp2::LookupIndexResp>> GraphStorageClient:
 
   auto& clusters = status.value();
   std::unordered_map<HostAddr, cpp2::LookupIndexRequest> requests;
-  auto common = makeRequestCommon(session, plan);
+  auto common = makeRequestCommon(session, plan, profile);
   for (auto& c : clusters) {
     auto& host = c.first;
     auto& req = requests[host];
@@ -524,6 +527,7 @@ folly::SemiFuture<StorageRpcResponse<cpp2::LookupIndexResp>> GraphStorageClient:
     spec.set_schema_id(schemaId);
     req.set_indices(spec);
     req.set_common(common);
+    req.set_limit(limit);
   }
 
   return collectResponse(
@@ -797,10 +801,12 @@ StatusOr<std::function<const VertexID&(const cpp2::DelTags&)>> GraphStorageClien
   return cb;
 }
 cpp2::RequestCommon GraphStorageClient::makeRequestCommon(SessionID sessionId,
-                                                          ExecutionPlanID planId) {
+                                                          ExecutionPlanID planId,
+                                                          bool profile) {
   cpp2::RequestCommon common;
   common.set_session_id(sessionId);
   common.set_plan_id(planId);
+  common.set_profile_detail(profile);
   return common;
 }
 
