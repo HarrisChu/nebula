@@ -28,7 +28,11 @@ void ListZonesProcessor::process(const cpp2::ListZonesReq&) {
     auto hosts = MetaServiceUtils::parseZoneHosts(iter->val());
     cpp2::Zone zone;
     zone.set_zone_name(std::move(zoneName));
-    zone.set_nodes(std::move(hosts));
+    if (hosts.size() != 0) {
+      zone.set_nodes(std::move(hosts));
+    } else {
+      zone.set_nodes({HostAddr("", 0)});
+    }
     zones.emplace_back(std::move(zone));
     iter->next();
   }

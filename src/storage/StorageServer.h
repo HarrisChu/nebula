@@ -17,6 +17,7 @@
 #include "kvstore/NebulaStore.h"
 #include "storage/CommonUtils.h"
 #include "storage/admin/AdminTaskManager.h"
+#include "storage/transaction/TransactionManager.h"
 
 namespace nebula {
 
@@ -42,10 +43,14 @@ class StorageServer final {
   void waitUntilStop();
 
  private:
-  enum ServiceStatus { STATUS_UNINITIALIZED = 0, STATUS_RUNNING = 1, STATUS_STTOPED = 2 };
+  enum ServiceStatus { STATUS_UNINITIALIZED = 0, STATUS_RUNNING = 1, STATUS_STOPPED = 2 };
 
  private:
   std::unique_ptr<kvstore::KVStore> getStoreInstance();
+
+  std::unique_ptr<kvstore::KVEngine> getAdminStoreInstance();
+
+  int32_t getAdminStoreSeqId();
 
   bool initWebService();
 
@@ -81,7 +86,9 @@ class StorageServer final {
   std::string listenerPath_;
 
   AdminTaskManager* taskMgr_{nullptr};
-  std::unique_ptr<TransactionManager> txnMan_;
+  std::unique_ptr<TransactionManager> txnMan_{nullptr};
+  // used for communicate between one storaged to another
+  std::unique_ptr<InternalStorageClient> interClient_;
 };
 
 }  // namespace storage

@@ -5,6 +5,9 @@ nebula_add_executable(
         SimpleKVVerifyTool.cpp
     OBJECTS
         $<TARGET_OBJECTS:meta_service_handler>
+        $<TARGET_OBJECTS:meta_version_man_obj>
+        $<TARGET_OBJECTS:meta_v1_thrift_obj>
+        $<TARGET_OBJECTS:meta_data_upgrade_obj>
         $<TARGET_OBJECTS:storage_admin_service_handler>
         $<TARGET_OBJECTS:graph_storage_service_handler>
         $<TARGET_OBJECTS:storage_common_obj>
@@ -38,6 +41,7 @@ nebula_add_executable(
         $<TARGET_OBJECTS:general_storage_client_obj>
         $<TARGET_OBJECTS:expression_obj>
         $<TARGET_OBJECTS:function_manager_obj>
+        $<TARGET_OBJECTS:wkt_wkb_io_obj>
         $<TARGET_OBJECTS:agg_function_manager_obj>
         $<TARGET_OBJECTS:version_obj>
     LIBRARIES

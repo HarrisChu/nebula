@@ -24,6 +24,7 @@
 #include "storage/BaseProcessor.h"
 #include "storage/GraphStorageServiceHandler.h"
 #include "storage/StorageAdminServiceHandler.h"
+#include "storage/transaction/TransactionManager.h"
 
 namespace nebula {
 namespace mock {
@@ -52,7 +53,7 @@ class MockCluster {
    * Init a meta client connect to current meta server.
    * The meta server should be started before calling this method.
    * */
-  void initMetaClient(meta::MetaClientOptions options = meta::MetaClientOptions());
+  meta::MetaClient* initMetaClient(meta::MetaClientOptions options = meta::MetaClientOptions());
 
   /*
    * Init a storage client connect to graphStorageServer
@@ -135,6 +136,7 @@ class MockCluster {
   std::unique_ptr<kvstore::NebulaStore> esListener_{nullptr};
   std::unique_ptr<meta::SchemaManager> lSchemaMan_;
   std::unique_ptr<meta::MetaClient> lMetaClient_{nullptr};
+  std::unique_ptr<storage::TransactionManager> txnMan_{nullptr};
 
   ObjectPool pool_;
 };

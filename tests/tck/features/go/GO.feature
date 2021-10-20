@@ -409,9 +409,9 @@ Feature: Go Sentence
       """
     Then the result should be, in any order, with relax comparison:
       | serve._dst | like._dst         | serve._type | like._type |
-      | EMPTY      | "James Harden"    | EMPTY       | -5         |
-      | EMPTY      | "Dejounte Murray" | EMPTY       | -5         |
-      | EMPTY      | "Paul George"     | EMPTY       | -5         |
+      | EMPTY      | "James Harden"    | EMPTY       | /-?\d+/    |
+      | EMPTY      | "Dejounte Murray" | EMPTY       | /-?\d+/    |
+      | EMPTY      | "Paul George"     | EMPTY       | /-?\d+/    |
 
   Scenario: multi edges
     When executing query:
@@ -1136,7 +1136,7 @@ Feature: Go Sentence
       """
       GO FROM 'Tim Duncan' OVER like where like.likeness
       """
-    Then a SemanticError should be raised at runtime: `like.likeness', expected Boolean, but was `INT'
+    Then a SemanticError should be raised at runtime: `like.likeness', expected boolean, but was `INT'
 
   Scenario: contain
     When executing query:

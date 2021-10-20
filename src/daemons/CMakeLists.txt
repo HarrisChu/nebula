@@ -23,12 +23,16 @@ set(common_deps
     $<TARGET_OBJECTS:thread_obj>
     $<TARGET_OBJECTS:conf_obj>
     $<TARGET_OBJECTS:datatypes_obj>
+    $<TARGET_OBJECTS:wkt_wkb_io_obj>
     $<TARGET_OBJECTS:base_obj>
+    $<TARGET_OBJECTS:memory_obj>
     $<TARGET_OBJECTS:expression_obj>
     $<TARGET_OBJECTS:function_manager_obj>
+    $<TARGET_OBJECTS:wkt_wkb_io_obj>
     $<TARGET_OBJECTS:agg_function_manager_obj>
     $<TARGET_OBJECTS:time_utils_obj>
     $<TARGET_OBJECTS:version_obj>
+    $<TARGET_OBJECTS:ssl_obj>
 )
 
 set(storage_meta_deps
@@ -49,6 +53,7 @@ nebula_add_executable(
     SOURCES
         StorageDaemon.cpp
         SetupLogging.cpp
+        SetupBreakpad.cpp
     OBJECTS
         $<TARGET_OBJECTS:storage_server>
         $<TARGET_OBJECTS:internal_storage_service_handler>
@@ -75,6 +80,7 @@ nebula_add_executable(
     SOURCES
         MetaDaemon.cpp
         SetupLogging.cpp
+        SetupBreakpad.cpp
     OBJECTS
         $<TARGET_OBJECTS:meta_service_handler>
         $<TARGET_OBJECTS:meta_http_handler>
@@ -96,6 +102,7 @@ nebula_add_executable(
     SOURCES
         GraphDaemon.cpp
         SetupLogging.cpp
+        SetupBreakpad.cpp
     OBJECTS
         $<TARGET_OBJECTS:stats_def_obj>
         $<TARGET_OBJECTS:util_obj>
@@ -117,7 +124,6 @@ nebula_add_executable(
         $<TARGET_OBJECTS:graph_thrift_obj>
         $<TARGET_OBJECTS:storage_client_base_obj>
         $<TARGET_OBJECTS:graph_storage_client_obj>
-        $<TARGET_OBJECTS:storage_client_base_obj>
         $<TARGET_OBJECTS:concurrent_obj>
         $<TARGET_OBJECTS:charset_obj>
         $<TARGET_OBJECTS:graph_obj>

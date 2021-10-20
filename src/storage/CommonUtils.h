@@ -17,6 +17,7 @@
 #include "common/stats/StatsManager.h"
 #include "common/utils/MemoryLockWrapper.h"
 #include "interface/gen-cpp2/storage_types.h"
+#include "kvstore/KVEngine.h"
 #include "kvstore/KVStore.h"
 
 namespace nebula {
@@ -61,6 +62,7 @@ using VerticesMemLock = MemoryLockCore<VMLI>;
 using EdgesMemLock = MemoryLockCore<EMLI>;
 
 class TransactionManager;
+class InternalStorageClient;
 
 // unify TagID, EdgeType
 using SchemaID = TagID;
@@ -74,9 +76,12 @@ class StorageEnv {
   std::atomic<int32_t> onFlyingRequest_{0};
   std::unique_ptr<IndexGuard> rebuildIndexGuard_{nullptr};
   meta::MetaClient* metaClient_{nullptr};
+  InternalStorageClient* interClient_{nullptr};
   TransactionManager* txnMan_{nullptr};
   std::unique_ptr<VerticesMemLock> verticesML_{nullptr};
   std::unique_ptr<EdgesMemLock> edgesML_{nullptr};
+  std::unique_ptr<kvstore::KVEngine> adminStore_{nullptr};
+  int32_t adminSeqId_{0};
 
   IndexState getIndexState(GraphSpaceID space, PartitionID part) {
     auto key = std::make_tuple(space, part);
@@ -131,12 +136,35 @@ struct PropContext;
 // PlanContext stores information **unchanged** during the process.
 // All processor won't change them after request is parsed.
 class PlanContext {
+  using ReqCommonRef = ::apache::thrift::optional_field_ref<const cpp2::RequestCommon&>;
+
  public:
   PlanContext(StorageEnv* env, GraphSpaceID spaceId, size_t vIdLen, bool isIntId)
-      : env_(env), spaceId_(spaceId), vIdLen_(vIdLen), isIntId_(isIntId) {}
+      : env_(env),
+        spaceId_(spaceId),
+        sessionId_(0),
+        planId_(0),
+        vIdLen_(vIdLen),
+        isIntId_(isIntId) {}
+  PlanContext(
+      StorageEnv* env, GraphSpaceID spaceId, size_t vIdLen, bool isIntId, ReqCommonRef commonRef)
+      : env_(env),
+        spaceId_(spaceId),
+        sessionId_(0),
+        planId_(0),
+        vIdLen_(vIdLen),
+        isIntId_(isIntId) {
+    if (commonRef.has_value()) {
+      auto& common = commonRef.value();
+      sessionId_ = common.session_id_ref().value_or(0);
+      planId_ = common.plan_id_ref().value_or(0);
+    }
+  }
 
   StorageEnv* env_;
   GraphSpaceID spaceId_;
+  SessionID sessionId_;
+  ExecutionPlanID planId_;
   size_t vIdLen_;
   bool isIntId_;
 
@@ -145,6 +173,9 @@ class PlanContext {
 
   // used for toss version
   int64_t defaultEdgeVer_ = 0L;
+
+  // will be true if query is killed during execution
+  bool isKilled_ = false;
 
   // Manage expressions
   ObjectPool objPool_;
@@ -168,6 +199,11 @@ struct RuntimeContext {
   bool isEdge() const { return planContext_->isEdge_; }
 
   ObjectPool* objPool() { return &planContext_->objPool_; }
+
+  bool isPlanKilled() {
+    return env()->metaClient_ &&
+           env()->metaClient_->checkIsPlanKilled(planContext_->sessionId_, planContext_->planId_);
+  }
 
   PlanContext* planContext_;
   TagID tagId_ = 0;

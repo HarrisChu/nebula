@@ -16,6 +16,7 @@
 #include "storage/GeneralStorageServiceHandler.h"
 #include "storage/GraphStorageServiceHandler.h"
 #include "storage/StorageAdminServiceHandler.h"
+#include "storage/transaction/TransactionManager.h"
 
 DECLARE_int32(heartbeat_interval_secs);
 
@@ -210,6 +211,9 @@ void MockCluster::initStorageKV(const char* dataPath,
   storageEnv_->rebuildIndexGuard_ = std::make_unique<storage::IndexGuard>();
   storageEnv_->verticesML_ = std::make_unique<storage::VerticesMemLock>();
   storageEnv_->edgesML_ = std::make_unique<storage::EdgesMemLock>();
+
+  txnMan_ = std::make_unique<storage::TransactionManager>(storageEnv_.get());
+  storageEnv_->txnMan_ = txnMan_.get();
 }
 
 void MockCluster::startStorage(HostAddr addr,
@@ -280,13 +284,14 @@ std::unique_ptr<meta::IndexManager> MockCluster::memIndexMan(GraphSpaceID spaceI
   return indexMan;
 }
 
-void MockCluster::initMetaClient(meta::MetaClientOptions options) {
+meta::MetaClient* MockCluster::initMetaClient(meta::MetaClientOptions options) {
   CHECK(metaServer_ != nullptr);
   auto threadPool = std::make_shared<folly::IOThreadPoolExecutor>(1);
   auto localhosts = std::vector<HostAddr>{HostAddr(localIP(), metaServer_->port_)};
   metaClient_ = std::make_unique<meta::MetaClient>(threadPool, localhosts, options);
   metaClient_->waitForMetadReady();
   LOG(INFO) << "Meta client has been ready!";
+  return metaClient_.get();
 }
 
 storage::GraphStorageClient* MockCluster::initGraphStorageClient() {

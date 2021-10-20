@@ -37,7 +37,9 @@ class UpdateNode : public RelNode<T> {
         insertable_(insertable),
         depPropMap_(depPropMap),
         expCtx_(expCtx),
-        isEdge_(isEdge) {}
+        isEdge_(isEdge) {
+    RelNode<T>::name_ = "UpdateNode";
+  }
 
   nebula::cpp2::ErrorCode checkField(const meta::SchemaProviderIf::Field* field) {
     if (!field) {
@@ -151,7 +153,7 @@ class UpdateNode : public RelNode<T> {
 // Update records, write to kvstore
 class UpdateTagNode : public UpdateNode<VertexID> {
  public:
-  using RelNode<VertexID>::execute;
+  using RelNode<VertexID>::doExecute;
 
   UpdateTagNode(RuntimeContext* context,
                 std::vector<std::shared_ptr<nebula::meta::cpp2::IndexItem>> indexes,
@@ -165,9 +167,10 @@ class UpdateTagNode : public UpdateNode<VertexID> {
             context, indexes, updatedProps, filterNode, insertable, depPropMap, expCtx, false),
         tagContext_(tagContext) {
     tagId_ = context_->tagId_;
+    name_ = "UpdateTagNode";
   }
 
-  nebula::cpp2::ErrorCode execute(PartitionID partId, const VertexID& vId) override {
+  nebula::cpp2::ErrorCode doExecute(PartitionID partId, const VertexID& vId) override {
     CHECK_NOTNULL(context_->env()->kvstore_);
     IndexCountWrapper wrapper(context_->env());
 
@@ -181,7 +184,7 @@ class UpdateTagNode : public UpdateNode<VertexID> {
       return nebula::cpp2::ErrorCode::E_DATA_CONFLICT_ERROR;
     }
 
-    auto ret = RelNode::execute(partId, vId);
+    auto ret = RelNode::doExecute(partId, vId);
     if (ret != nebula::cpp2::ErrorCode::SUCCEEDED) {
       return ret;
     }
@@ -428,7 +431,7 @@ class UpdateTagNode : public UpdateNode<VertexID> {
 // Update records, write to kvstore
 class UpdateEdgeNode : public UpdateNode<cpp2::EdgeKey> {
  public:
-  using RelNode<cpp2::EdgeKey>::execute;
+  using RelNode<cpp2::EdgeKey>::doExecute;
 
   UpdateEdgeNode(RuntimeContext* context,
                  std::vector<std::shared_ptr<nebula::meta::cpp2::IndexItem>> indexes,
@@ -442,9 +445,10 @@ class UpdateEdgeNode : public UpdateNode<cpp2::EdgeKey> {
             context, indexes, updatedProps, filterNode, insertable, depPropMap, expCtx, true),
         edgeContext_(edgeContext) {
     edgeType_ = context_->edgeType_;
+    name_ = "UpdateEdgeNode";
   }
 
-  nebula::cpp2::ErrorCode execute(PartitionID partId, const cpp2::EdgeKey& edgeKey) override {
+  nebula::cpp2::ErrorCode doExecute(PartitionID partId, const cpp2::EdgeKey& edgeKey) override {
     CHECK_NOTNULL(context_->env()->kvstore_);
     auto ret = nebula::cpp2::ErrorCode::SUCCEEDED;
     IndexCountWrapper wrapper(context_->env());
@@ -466,7 +470,7 @@ class UpdateEdgeNode : public UpdateNode<cpp2::EdgeKey> {
     }
 
     auto op = [&partId, &edgeKey, this]() -> folly::Optional<std::string> {
-      this->exeResult_ = RelNode::execute(partId, edgeKey);
+      this->exeResult_ = RelNode::doExecute(partId, edgeKey);
       if (this->exeResult_ == nebula::cpp2::ErrorCode::SUCCEEDED) {
         if (*edgeKey.edge_type_ref() != this->edgeType_) {
           this->exeResult_ = nebula::cpp2::ErrorCode::E_KEY_NOT_FOUND;
@@ -510,33 +514,20 @@ class UpdateEdgeNode : public UpdateNode<cpp2::EdgeKey> {
       }
     };
 
-    if (context_->env()->txnMan_ && context_->env()->txnMan_->enableToss(context_->spaceId())) {
-      LOG(INFO) << "before update edge atomic" << TransactionUtils::dumpKey(edgeKey);
-      auto f = context_->env()->txnMan_->updateEdgeAtomic(
-          context_->vIdLen(), context_->spaceId(), partId, edgeKey, std::move(op));
-      f.wait();
-
-      if (f.valid()) {
-        ret = f.value();
-      } else {
-        ret = nebula::cpp2::ErrorCode::E_UNKNOWN;
-      }
-    } else {
-      auto batch = op();
-      if (batch == folly::none) {
-        return this->exeResult_;
-      }
-
-      folly::Baton<true, std::atomic> baton;
-      auto callback = [&ret, &baton](nebula::cpp2::ErrorCode code) {
-        ret = code;
-        baton.post();
-      };
-
-      context_->env()->kvstore_->asyncAppendBatch(
-          context_->spaceId(), partId, std::move(batch).value(), callback);
-      baton.wait();
+    auto batch = op();
+    if (batch == folly::none) {
+      return this->exeResult_;
     }
+
+    folly::Baton<true, std::atomic> baton;
+    auto callback = [&ret, &baton](nebula::cpp2::ErrorCode code) {
+      ret = code;
+      baton.post();
+    };
+
+    context_->planContext_->env_->kvstore_->asyncAppendBatch(
+        context_->planContext_->spaceId_, partId, std::move(batch).value(), callback);
+    baton.wait();
     return ret;
   }
 
@@ -730,6 +721,14 @@ class UpdateEdgeNode : public UpdateNode<cpp2::EdgeKey> {
     }
     // step 3, insert new edge data
     batchHolder->put(std::move(key_), std::move(nVal));
+
+    // extra phase: if there are some extra requirement.
+    for (auto& [k, v] : edgeContext_->kvAppend) {
+      batchHolder->put(std::move(k), std::move(v));
+    }
+    for (auto& k : edgeContext_->kvErased) {
+      batchHolder->remove(std::move(k));
+    }
     return encodeBatchValue(batchHolder->getBatch());
   }
 

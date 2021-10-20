@@ -8,6 +8,7 @@
 #include "graph/validator/test/ValidatorTestBase.h"
 
 DECLARE_uint32(max_allowed_statements);
+DECLARE_uint32(max_allowed_query_size);
 
 namespace nebula {
 namespace graph {
@@ -917,8 +918,7 @@ TEST_F(QueryValidatorTest, GoInvalid) {
     std::string query = "GO FROM \"2\" OVER like YIELD COUNT(123);";
     auto result = checkResult(query);
     EXPECT_EQ(std::string(result.message()),
-              "SemanticError: `COUNT(123)', "
-              "not support aggregate function in go sentence.");
+              "SemanticError: `COUNT(123)' is not support in go sentence.");
   }
   {
     std::string query =
@@ -948,6 +948,47 @@ TEST_F(QueryValidatorTest, GoInvalid) {
         "GO FROM $a.DST OVER like";
     auto result = checkResult(query);
     EXPECT_EQ(std::string(result.message()), "SemanticError: Duplicate Column Name : `id'");
+  }
+  {
+    std::string query = "GO FROM id(vertex) OVER * ";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SemanticError: `id(VERTEX)' is not an evaluable expression.");
+  }
+  {
+    std::string query = "GO FROM \"Tim\" OVER * YIELD vertex as v";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SemanticError: `VERTEX AS v' is not support in go sentence.");
+  }
+  {
+    std::string query = "GO FROM \"Tim\" OVER * YIELD path as p";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()), "SemanticError: Invalid label identifiers: path");
+  }
+  {
+    std::string query = "GO FROM \"Tim\" OVER * YIELD $$";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SyntaxError: please add alias when using `$$'. near `$$'");
+  }
+  {
+    std::string query = "GO FROM \"Tim\" OVER * YIELD $^";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SyntaxError: please add alias when using `$^'. near `$^'");
+  }
+  {
+    std::string query = "GO 1 TO 4 STEPS FROM \"Tim\" OVER * YIELD id(vertex) as id";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SemanticError: `id(VERTEX) AS id' is not support in go sentence.");
+  }
+  {
+    std::string query = "GO 2 STEPS FROM \"Tim\" OVER * YIELD vertex as v";
+    auto result = checkResult(query);
+    EXPECT_EQ(std::string(result.message()),
+              "SemanticError: `VERTEX AS v' is not support in go sentence.");
   }
 }
 
@@ -1116,6 +1157,26 @@ TEST_F(QueryValidatorTest, TestMaxAllowedStatements) {
   EXPECT_EQ(std::string(result.message()),
             "SemanticError: The maximum number of statements allowed has been "
             "exceeded");
+}
+
+TEST_F(QueryValidatorTest, TestMaxAllowedQuerySize) {
+  FLAGS_max_allowed_query_size = 256;
+  std::string query = "INSERT VERTEX person(name, age) VALUES ";
+  std::string value = "\"person_1\":(\"person_1\", 1),";
+  int count = (FLAGS_max_allowed_query_size - query.size()) / value.size();
+  std::string values;
+  values.reserve(FLAGS_max_allowed_query_size);
+  for (int i = 0; i < count; ++i) {
+    values.append(value);
+  }
+  values.erase(values.size() - 1);
+  query += values;
+  EXPECT_TRUE(checkResult(query));
+  query.append(",\"person_2\":(\"person_2\", 2);");
+  auto result = checkResult(query);
+  EXPECT_FALSE(result);
+  EXPECT_EQ(std::string(result.message()), "SyntaxError: Query is too large (282 > 256).");
+  FLAGS_max_allowed_query_size = 4194304;
 }
 
 TEST_F(QueryValidatorTest, TestMatch) {
