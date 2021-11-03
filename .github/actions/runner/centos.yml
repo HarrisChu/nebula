@@ -1,0 +1,80 @@
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerSet
+metadata:
+  name: actions-runner-centos
+  namespace: default
+spec:
+  ephemeral: false
+  repository: harrischu/nebula
+  dockerdWithinRunnerContainer: false
+  selector:
+    matchLabels:
+      app: example
+  serviceName: example
+
+  labels:
+    - centos
+
+  template:
+    metadata:
+      labels:
+        app: example
+    spec:
+      securityContext:
+      containers:
+        - name: runner
+          env: []
+          # image: summerwind/actions-runner
+          resources:
+            limits:
+              cpu: "2.0"
+              memory: "4Gi"
+            requests:
+              cpu: "1.0"
+              memory: "2Gi"
+
+        - name: docker
+          securityContext:
+          # image: docker.io/docker:dind
+          resources:
+            limits:
+              cpu: "8.0"
+              memory: "32Gi"
+            requests:
+              cpu: "8.0"
+              memory: "32Gi"
+          volumeMounts:
+            - name: runner-cache
+              mountPath: /tmp
+
+  volumeClaimTemplates:
+    - metadata:
+        name: runner-cache
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client
+        resources:
+          requests:
+            storage: "10Gi"
+---
+# HPA
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: HorizontalRunnerAutoscaler
+metadata:
+  name: runner-centos-autoscaler
+spec:
+  scaleDownDelaySecondsAfterScaleOut: 60
+  scaleTargetRef:
+    kind: RunnerSet
+    name: actions-runner-centos
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: PercentageRunnersBusy
+    scaleUpThreshold: '0.75'
+    scaleDownThreshold: '0.25'
+    scaleUpFactor: '1'
+    scaleDownFactor: '0.5'
+  - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
+    repositoryNames:
+    - harrischu/nebula
