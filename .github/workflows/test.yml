@@ -18,14 +18,9 @@ jobs:
   docker_build:
     name: docker-build
     runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - graphd
-          - metad
-          - storaged
-          - tools
+    # strategy:
+    #   fail-fast: false
+ 
     steps:
       - uses: webiny/action-post-run@2.0.1
         with:
@@ -39,8 +34,8 @@ jobs:
         run: |
           majorver=$(git tag -l --sort=v:refname | tail -n1 | cut -f1 -d'.')
           tag=""
-          if [[ $majorver == ${{ steps.tagname.outputs.majorver }} ]]; then
-            tag="vesoft/nebula-${{ matrix.service }}:latest"
+          if [[ $majorver == v${{ steps.tagname.outputs.majorver }} ]]; then
+            tag="latest"
           fi
           echo "::set-output name=tag::$tag"
       - uses: docker/setup-qemu-action@v1
