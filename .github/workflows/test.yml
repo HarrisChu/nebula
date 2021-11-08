@@ -1,8 +1,9 @@
 name: release_test
 
 on:
-  workflow_dispatch:
-
+  release:
+    types:
+      - published
 concurrency:
   group: release
   cancel-in-progress: true
@@ -17,7 +18,7 @@ jobs:
     runs-on: self-hosted
     # strategy:
     #   fail-fast: false
- 
+
     steps:
       - uses: webiny/action-post-run@2.0.1
         with:
