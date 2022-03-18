@@ -16,7 +16,8 @@ class PasswordAuthenticator final : public Authenticator {
  public:
   explicit PasswordAuthenticator(meta::MetaClient* client);
 
-  bool auth(const std::string& user, const std::string& password) override;
+  // Authenticates the user by checking the user/password cache in the meta
+  Status auth(const std::string& user, const std::string& password) override;
 
  private:
   meta::MetaClient* metaClient_;

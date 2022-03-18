@@ -17,17 +17,32 @@ class SelectExecutor final : public Executor {
 
   folly::Future<Status> execute() override;
 
-  void setThenBody(Executor* then) { then_ = DCHECK_NOTNULL(then); }
+  void setThenBody(Executor* then) {
+    then_ = DCHECK_NOTNULL(then);
+  }
 
-  void setElseBody(Executor* els) { else_ = DCHECK_NOTNULL(els); }
+  void setElseBody(Executor* els) {
+    else_ = DCHECK_NOTNULL(els);
+  }
 
-  Executor* thenBody() const { return then_; }
+  Executor* thenBody() const {
+    return then_;
+  }
 
-  Executor* elseBody() const { return else_; }
+  Executor* elseBody() const {
+    return else_;
+  }
+
+  bool condition() const {
+    return condition_;
+  }
 
  private:
   Executor* then_;
   Executor* else_;
+
+  // mark condition value
+  bool condition_{false};
 };
 
 }  // namespace graph

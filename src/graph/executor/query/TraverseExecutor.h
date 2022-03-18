@@ -41,9 +41,9 @@ class TraverseExecutor final : public StorageAccessExecutor {
 
   void addStats(RpcResponse& resps, int64_t getNbrTimeInUSec);
 
-  void getNeighbors();
+  folly::Future<Status> getNeighbors();
 
-  void handleResponse(RpcResponse& resps);
+  folly::Future<Status> handleResponse(RpcResponse&& resps);
 
   Status buildInterimPath(GetNeighborsIter* iter);
 
@@ -54,7 +54,9 @@ class TraverseExecutor final : public StorageAccessExecutor {
            (range_ != nullptr && (currentStep_ == range_->max() || range_->max() == 0));
   }
 
-  bool zeroStep() const { return range_ != nullptr && range_->min() == 0; }
+  bool zeroStep() const {
+    return range_ != nullptr && range_->min() == 0;
+  }
 
   bool hasSameEdge(const Row& prevPath, const Edge& currentEdge);
 
@@ -72,7 +74,6 @@ class TraverseExecutor final : public StorageAccessExecutor {
  private:
   DataSet reqDs_;
   const Traverse* traverse_{nullptr};
-  folly::Promise<Status> promise_;
   MatchStepRange* range_{nullptr};
   size_t currentStep_{0};
   std::list<std::unordered_map<Value, Paths>> paths_;

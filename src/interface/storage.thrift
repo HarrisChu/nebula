@@ -9,7 +9,7 @@ namespace java com.vesoft.nebula.storage
 namespace go nebula.storage
 namespace csharp nebula.storage
 namespace js nebula.storage
-namespace py nebula2.storage
+namespace py nebula3.storage
 
 include "common.thrift"
 include "meta.thrift"
@@ -495,6 +495,8 @@ struct LookupIndexResp {
     // Each column represents one property. the column name is in the form of "tag_name.prop_alias"
     // or "edge_type_name.prop_alias" in the same order which specified in return_columns of request
     2: optional common.DataSet          data,
+    // stat_data only have one column, the column name is the order in LookupIndexRequest.stat_prop
+    3: optional common.DataSet          stat_data,
 }
 
 enum ScanType {
@@ -545,6 +547,8 @@ struct LookupIndexRequest {
     5: optional RequestCommon               common,
     // max row count of each partition in this response
     6: optional i64                         limit,
+    7: optional list<OrderBy>               order_by,
+    8: optional list<StatProp>              stat_columns,
 }
 
 
@@ -684,6 +688,7 @@ service GraphStorageService {
 
     UpdateResponse chainUpdateEdge(1: UpdateEdgeRequest req);
     ExecResponse chainAddEdges(1: AddEdgesRequest req);
+    ExecResponse chainDeleteEdges(1: DeleteEdgesRequest req);
 
     KVGetResponse   get(1: KVGetRequest req);
     ExecResponse    put(1: KVPutRequest req);
@@ -698,7 +703,7 @@ service GraphStorageService {
 //////////////////////////////////////////////////////////
 // Common response for admin methods
 struct AdminExecResp {
-    1: required ResponseCommon   result,
+    1: required ResponseCommon  result,
     2: optional meta.StatsItem  stats,
 }
 
@@ -750,31 +755,40 @@ struct GetLeaderReq {
 }
 
 struct CreateCPRequest {
-    1: common.GraphSpaceID  space_id,
-    2: binary               name,
+    1: list<common.GraphSpaceID>  space_ids,
+    2: binary                     name,
 }
 
+struct CreateCPResp {
+    1: common.ErrorCode             code,
+    2: list<common.CheckpointInfo>  info,
+}
 
 struct DropCPRequest {
-    1: common.GraphSpaceID  space_id,
-    2: binary               name,
+    1: list<common.GraphSpaceID>  space_ids,
+    2: binary                     name,
 }
 
+struct DropCPResp {
+    1: common.ErrorCode             code,
+}
 
 enum EngineSignType {
     BLOCK_ON = 1,
     BLOCK_OFF = 2,
 }
 
-
 struct BlockingSignRequest {
-    1: common.GraphSpaceID      space_id,
-    2: required EngineSignType  sign,
+    1: list<common.GraphSpaceID>    space_ids,
+    2: required EngineSignType      sign,
 }
 
+struct BlockingSignResp {
+    1: common.ErrorCode             code,
+}
 
 struct GetLeaderPartsResp {
-    1: required ResponseCommon result,
+    1: common.ErrorCode             code,
     2: map<common.GraphSpaceID, list<common.PartitionID>> (
         cpp.template = "std::unordered_map") leader_parts;
 }
@@ -793,11 +807,6 @@ struct RebuildIndexRequest {
     3: common.IndexID               index_id,
 }
 
-struct CreateCPResp {
-    1: required ResponseCommon      result,
-    2: list<common.CheckpointInfo>  info,
-}
-
 struct ListClusterInfoResp {
     1: required ResponseCommon  result,
     2: common.DirInfo           dir,
@@ -806,18 +815,33 @@ struct ListClusterInfoResp {
 struct ListClusterInfoReq {
 }
 
-struct AddAdminTaskRequest {
-    // rebuild index / flush / compact / statis
-    1: meta.AdminCmd                        cmd
+struct AddTaskRequest {
+    // Task distributed to storage to execute, e.g. flush, compact, stats, etc.
+    1: meta.JobType                         job_type
     2: i32                                  job_id
     3: i32                                  task_id
     4: TaskPara                             para
-    5: optional i32                         concurrency
 }
 
-struct StopAdminTaskRequest {
+struct AddTaskResp {
+    1: common.ErrorCode                     code,
+}
+
+struct StopTaskRequest {
     1: i32                                  job_id
     2: i32                                  task_id
+}
+
+struct StopTaskResp {
+    1: common.ErrorCode                     code,
+}
+
+struct ClearSpaceReq {
+    1: common.GraphSpaceID space_id,
+}
+
+struct ClearSpaceResp {
+    1: common.ErrorCode code,
 }
 
 service StorageAdminService {
@@ -831,22 +855,18 @@ service StorageAdminService {
 
     // Interfaces for nebula cluster checkpoint
     CreateCPResp  createCheckpoint(1: CreateCPRequest req);
-    AdminExecResp dropCheckpoint(1: DropCPRequest req);
-    AdminExecResp blockingWrites(1: BlockingSignRequest req);
-
-    // Interfaces for rebuild index
-    AdminExecResp rebuildTagIndex(1: RebuildIndexRequest req);
-    AdminExecResp rebuildEdgeIndex(1: RebuildIndexRequest req);
+    DropCPResp    dropCheckpoint(1: DropCPRequest req);
+    BlockingSignResp blockingWrites(1: BlockingSignRequest req);
 
     // Return all leader partitions on this host
     GetLeaderPartsResp getLeaderParts(1: GetLeaderReq req);
     // Return all peers
     AdminExecResp checkPeers(1: CheckPeersReq req);
 
-    AdminExecResp addAdminTask(1: AddAdminTaskRequest req);
-    AdminExecResp stopAdminTask(1: StopAdminTaskRequest req);
+    AddTaskResp   addAdminTask(1: AddTaskRequest req);
+    StopTaskResp  stopAdminTask(1: StopTaskRequest req);
 
-    ListClusterInfoResp listClusterInfo(1: ListClusterInfoReq req);
+    ClearSpaceResp clearSpace(1: ClearSpaceReq req);
 }
 
 
@@ -855,17 +875,6 @@ service StorageAdminService {
 //  Requests, responses for the InternalStorageService
 //
 //////////////////////////////////////////////////////////
-
-// transaction request
-struct InternalTxnRequest {
-    1: i64                                      txn_id,
-    2: map<common.PartitionID, i64>             term_of_parts,
-    3: optional AddEdgesRequest                 add_edge_req,
-    4: optional UpdateEdgeRequest               upd_edge_req,
-    5: optional map<common.PartitionID, list<i64>>(
-        cpp.template = "std::unordered_map")    edge_ver,
-}
-
 
 struct ChainAddEdgesRequest {
     1: common.GraphSpaceID                      space_id,
@@ -877,7 +886,6 @@ struct ChainAddEdgesRequest {
     3: list<binary>                             prop_names,
     // if true, when edge already exists, do nothing
     4: bool                                     if_not_exists,
-    // 5: map<common.PartitionID, i64>             term_of_parts,
     5: i64                                      term
     6: optional i64                             edge_version
     // 6: optional map<common.PartitionID, list<i64>>(
@@ -893,7 +901,17 @@ struct ChainUpdateEdgeRequest {
     5: required list<common.PartitionID>        parts,
 }
 
+struct ChainDeleteEdgesRequest {
+    1: common.GraphSpaceID                      space_id,
+    // partId => edgeKeys
+    2: map<common.PartitionID, list<EdgeKey>>
+        (cpp.template = "std::unordered_map")   parts,
+    3: binary                                   txn_id
+    4: i64                                      term,
+}
+
 service InternalStorageService {
     ExecResponse chainAddEdges(1: ChainAddEdgesRequest req);
     UpdateResponse chainUpdateEdge(1: ChainUpdateEdgeRequest req);
+    ExecResponse chainDeleteEdges(1: ChainDeleteEdgesRequest req);
 }

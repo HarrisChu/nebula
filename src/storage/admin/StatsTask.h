@@ -15,18 +15,38 @@
 namespace nebula {
 namespace storage {
 
+/**
+ * @brief Task class to handle statistics.
+ *
+ */
 class StatsTask : public AdminTask {
  public:
   using AdminTask::finish;
   StatsTask(StorageEnv* env, TaskContext&& ctx) : AdminTask(env, std::move(ctx)) {}
 
-  ~StatsTask() { LOG(INFO) << "Release Stats Task"; }
+  ~StatsTask() {
+    LOG(INFO) << "Release Stats Task";
+  }
 
+  /**
+   * @brief Generate sub tasks for StatsTask.
+   *
+   * @return ErrorOr<nebula::cpp2::ErrorCode, std::vector<AdminSubTask>> Task vector or errorcode.
+   */
   ErrorOr<nebula::cpp2::ErrorCode, std::vector<AdminSubTask>> genSubTasks() override;
 
+  /**
+   * @brief Handle task execution result.
+   *
+   * @param rc Errorcode of task.
+   */
   void finish(nebula::cpp2::ErrorCode rc) override;
 
  protected:
+  /**
+   * @brief Cancel task and set result to be cancelled.
+   *
+   */
   void cancel() override {
     canceled_ = true;
     auto suc = nebula::cpp2::ErrorCode::SUCCEEDED;

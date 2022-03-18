@@ -11,6 +11,8 @@
 #include "graph/planner/plan/Query.h"
 #include "graph/util/ExpressionUtils.h"
 
+DEFINE_bool(enable_optimizer_collapse_project_rule, true, "");
+
 using nebula::graph::PlanNode;
 using nebula::graph::QueryContext;
 
@@ -20,7 +22,9 @@ namespace opt {
 std::unique_ptr<OptRule> CollapseProjectRule::kInstance =
     std::unique_ptr<CollapseProjectRule>(new CollapseProjectRule());
 
-CollapseProjectRule::CollapseProjectRule() { RuleSet::QueryRules().addRule(this); }
+CollapseProjectRule::CollapseProjectRule() {
+  RuleSet::QueryRules().addRule(this);
+}
 
 const Pattern& CollapseProjectRule::pattern() const {
   static Pattern pattern = Pattern::create(graph::PlanNode::Kind::kProject,
@@ -60,9 +64,11 @@ StatusOr<OptRule::TransformResult> CollapseProjectRule::transform(
   // disable this case to avoid the expression in ProjBelow being eval multiple
   // times
   std::unordered_set<std::string> uniquePropRefNames;
+  std::unordered_set<std::string> multiRefColNames;
   for (auto p : allPropRefNames) {
     if (!uniquePropRefNames.insert(p).second) {
-      return TransformResult::noTransform();
+      // Records PropRefNames that are referenced multiple times
+      multiRefColNames.insert(p);
     }
   }
 
@@ -71,7 +77,13 @@ StatusOr<OptRule::TransformResult> CollapseProjectRule::transform(
   auto colNames = projBelow->colNames();
   for (size_t i = 0; i < colNames.size(); ++i) {
     if (uniquePropRefNames.count(colNames[i])) {
-      rewriteMap[colNames[i]] = colsBelow[i]->expr();
+      auto colExpr = colsBelow[i]->expr();
+      // disable this case to avoid the expression in ProjBelow being eval multiple
+      // times
+      if (!graph::ExpressionUtils::isPropertyExpr(colExpr) && multiRefColNames.count(colNames[i])) {
+        return TransformResult::noTransform();
+      }
+      rewriteMap[colNames[i]] = colExpr;
     }
   }
 
@@ -108,10 +120,15 @@ StatusOr<OptRule::TransformResult> CollapseProjectRule::transform(
 }
 
 bool CollapseProjectRule::match(OptContext* octx, const MatchedResult& matched) const {
+  if (!FLAGS_enable_optimizer_collapse_project_rule) {
+    return false;
+  }
   return OptRule::match(octx, matched);
 }
 
-std::string CollapseProjectRule::toString() const { return "CollapseProjectRule"; }
+std::string CollapseProjectRule::toString() const {
+  return "CollapseProjectRule";
+}
 
 }  // namespace opt
 }  // namespace nebula

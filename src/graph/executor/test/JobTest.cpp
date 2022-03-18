@@ -17,23 +17,23 @@ class JobTest : public testing::Test {};
 TEST_F(JobTest, JobFinishTime) {
   {
     meta::cpp2::AdminJobResult resp;
-    resp.set_job_id(0);
+    resp.job_id_ref() = 0;
     meta::cpp2::JobDesc jobDesc;
-    jobDesc.set_id(0);
-    jobDesc.set_start_time(123);
-    jobDesc.set_stop_time(0);
-    resp.set_job_desc({std::move(jobDesc)});
+    jobDesc.id_ref() = 0;
+    jobDesc.start_time_ref() = 123;
+    jobDesc.stop_time_ref() = 0;
+    resp.job_desc_ref() = {std::move(jobDesc)};
     meta::cpp2::TaskDesc taskDesc;
-    taskDesc.set_start_time(456);
-    taskDesc.set_stop_time(0);
-    resp.set_task_desc({std::move(taskDesc)});
+    taskDesc.start_time_ref() = 456;
+    taskDesc.stop_time_ref() = 0;
+    resp.task_desc_ref() = {std::move(taskDesc)};
 
     auto qctx = std::make_unique<QueryContext>();
     auto submitJob = SubmitJob::make(
-        qctx.get(), nullptr, meta::cpp2::AdminJobOp::SHOW, meta::cpp2::AdminCmd::UNKNOWN, {});
+        qctx.get(), nullptr, meta::cpp2::JobOp::SHOW, meta::cpp2::JobType::UNKNOWN, {});
     auto submitJobExe = std::make_unique<SubmitJobExecutor>(submitJob, qctx.get());
 
-    auto status = submitJobExe->buildResult(meta::cpp2::AdminJobOp::SHOW, std::move(resp));
+    auto status = submitJobExe->buildResult(meta::cpp2::JobOp::SHOW, std::move(resp));
     EXPECT_TRUE(status.ok());
     auto result = std::move(status).value();
     EXPECT_EQ(result.rows.size(), 2);
@@ -44,19 +44,19 @@ TEST_F(JobTest, JobFinishTime) {
   }
   {
     meta::cpp2::AdminJobResult resp;
-    resp.set_job_id(0);
+    resp.job_id_ref() = 0;
     meta::cpp2::JobDesc jobDesc;
-    jobDesc.set_id(0);
-    jobDesc.set_start_time(123);
-    jobDesc.set_stop_time(0);
-    resp.set_job_desc({std::move(jobDesc)});
+    jobDesc.id_ref() = 0;
+    jobDesc.start_time_ref() = 123;
+    jobDesc.stop_time_ref() = 0;
+    resp.job_desc_ref() = {std::move(jobDesc)};
 
     auto qctx = std::make_unique<QueryContext>();
     auto submitJob = SubmitJob::make(
-        qctx.get(), nullptr, meta::cpp2::AdminJobOp::SHOW_All, meta::cpp2::AdminCmd::UNKNOWN, {});
+        qctx.get(), nullptr, meta::cpp2::JobOp::SHOW_All, meta::cpp2::JobType::UNKNOWN, {});
     auto submitJobExe = std::make_unique<SubmitJobExecutor>(submitJob, qctx.get());
 
-    auto status = submitJobExe->buildResult(meta::cpp2::AdminJobOp::SHOW_All, std::move(resp));
+    auto status = submitJobExe->buildResult(meta::cpp2::JobOp::SHOW_All, std::move(resp));
     EXPECT_TRUE(status.ok());
     auto result = std::move(status).value();
     EXPECT_EQ(result.rows.size(), 1);

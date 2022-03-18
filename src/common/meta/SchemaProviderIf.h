@@ -24,7 +24,7 @@ class SchemaProviderIf {
     virtual nebula::cpp2::PropertyType type() const = 0;
     virtual bool nullable() const = 0;
     virtual bool hasDefault() const = 0;
-    virtual Expression* defaultValue() const = 0;
+    virtual const std::string& defaultValue() const = 0;
     // This method returns the number of bytes the field will occupy
     // when the field is persisted on the storage medium
     // For the variant length string, the size will return 8
@@ -50,9 +50,13 @@ class SchemaProviderIf {
     friend class SchemaProviderIf;
 
    public:
-    const Field& operator*() const { return *field_; }
+    const Field& operator*() const {
+      return *field_;
+    }
 
-    const Field* operator->() const { return field_; }
+    const Field* operator->() const {
+      return field_;
+    }
 
     Iterator& operator++() {
       if (field_) {
@@ -70,7 +74,9 @@ class SchemaProviderIf {
       return *this;
     }
 
-    operator bool() const { return static_cast<bool>(field_); }
+    operator bool() const {
+      return static_cast<bool>(field_);
+    }
 
     bool operator==(const Iterator& rhs) const {
       return schema_ == rhs.schema_ && (index_ == rhs.index_ || (!field_ && !rhs.field_));
@@ -114,9 +120,13 @@ class SchemaProviderIf {
    * Iterator implementation
    *
    *****************************************/
-  Iterator begin() const { return Iterator(this, 0); }
+  Iterator begin() const {
+    return Iterator(this, 0);
+  }
 
-  Iterator end() const { return Iterator(this, getNumFields()); }
+  Iterator end() const {
+    return Iterator(this, getNumFields());
+  }
 };
 
 }  // namespace meta

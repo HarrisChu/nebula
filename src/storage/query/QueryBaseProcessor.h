@@ -29,7 +29,10 @@
 namespace nebula {
 namespace storage {
 
-// The PropContext stores the info about property to be returned or filtered
+/**
+ * @brief The PropContext stores the info about property to be returned or filtered
+ *
+ */
 struct PropContext {
  public:
   enum class PropInKeyType {
@@ -42,7 +45,9 @@ struct PropContext {
     DST = 0x06,
   };
 
-  explicit PropContext(const char* name) : name_(name) { setPropInKey(); }
+  explicit PropContext(const char* name) : name_(name) {
+    setPropInKey();
+  }
 
   PropContext(const char* name,
               const meta::SchemaProviderIf::Field* field,
@@ -56,6 +61,10 @@ struct PropContext {
     }
   }
 
+  /**
+   * @brief Set the prop type in edge key by prop name.
+   *
+   */
   void setPropInKey() {
     if (name_ == kVid) {
       propInKeyType_ = PropContext::PropInKeyType::VID;
@@ -72,6 +81,11 @@ struct PropContext {
     }
   }
 
+  /**
+   * @brief Add statistics info of prop index from request
+   *
+   * @param statInfo
+   */
   void addStat(const std::pair<size_t, cpp2::StatType>* statInfo) {
     hasStat_ = true;
     statIndex_.emplace_back(statInfo->first);
@@ -138,9 +152,9 @@ class QueryBaseProcessor : public BaseProcessor<RESP> {
   virtual void process(const REQ& req) = 0;
 
  protected:
-  explicit QueryBaseProcessor(StorageEnv* env,
-                              const ProcessorCounters* counters,
-                              folly::Executor* executor = nullptr)
+  QueryBaseProcessor(StorageEnv* env,
+                     const ProcessorCounters* counters,
+                     folly::Executor* executor = nullptr)
       : BaseProcessor<RESP>(env, counters), executor_(executor) {}
 
   virtual nebula::cpp2::ErrorCode checkAndBuildContexts(const REQ& req) = 0;

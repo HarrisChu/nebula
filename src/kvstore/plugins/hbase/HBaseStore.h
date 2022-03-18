@@ -25,7 +25,9 @@ class HBaseRangeIter : public KVIterator {
 
   ~HBaseRangeIter() = default;
 
-  bool valid() const override { return current_ != end_; }
+  bool valid() const override {
+    return current_ != end_;
+  }
 
   void next() override {
     CHECK(current_ != end_);
@@ -37,9 +39,13 @@ class HBaseRangeIter : public KVIterator {
     current_--;
   }
 
-  folly::StringPiece key() const override { return folly::StringPiece(current_->first); }
+  folly::StringPiece key() const override {
+    return folly::StringPiece(current_->first);
+  }
 
-  folly::StringPiece val() const override { return folly::StringPiece(current_->second); }
+  folly::StringPiece val() const override {
+    return folly::StringPiece(current_->second);
+  }
 
  private:
   KVArrayIterator current_;
@@ -58,7 +64,9 @@ class HBaseStore : public KVStore {
 
   void stop() override {}
 
-  uint32_t capability() const override { return 0; }
+  uint32_t capability() const override {
+    return 0;
+  }
 
   // Return the current leader
   ErrorOr<ResultCode, HostAddr> partLeader(GraphSpaceID spaceId, PartitionID partId) override {
@@ -67,6 +75,20 @@ class HBaseStore : public KVStore {
     return {-1, -1};
   }
 
+  const void* GetSnapshot(GraphSpaceID spaceId,
+                          PartitionID partID,
+                          bool canReadFromFollower = false) override {
+    UNUSED(spaceId);
+    UNUSED(partID);
+    UNUSED(canReadFromFollower);
+    return nullptr;
+  }
+  void ReleaseSnapshot(GraphSpaceID spaceId, PartitionID partId, const void* snapshot) override {
+    UNUSED(spaceId);
+    UNUSED(partId);
+    UNUSED(snapshot);
+    return;
+  }
   ResultCode get(GraphSpaceID spaceId,
                  PartitionID partId,
                  const std::string& key,
@@ -102,14 +124,16 @@ class HBaseStore : public KVStore {
                     PartitionID partId,
                     const std::string& prefix,
                     std::unique_ptr<KVIterator>* iter,
-                    bool canReadFromFollower = false) override;
+                    bool canReadFromFollower = false,
+                    const void* snapshot = nullptr) override;
 
   // To forbid to pass rvalue via the `prefix' parameter.
   ResultCode prefix(GraphSpaceID spaceId,
                     PartitionID partId,
                     std::string&& prefix,
                     std::unique_ptr<KVIterator>* iter,
-                    bool canReadFromFollower = false) override = delete;
+                    bool canReadFromFollower = false,
+                    const void* snapshot = nullptr) override = delete;
 
   // Get all results with prefix starting from start
   ResultCode rangeWithPrefix(GraphSpaceID spaceId,
@@ -172,9 +196,13 @@ class HBaseStore : public KVStore {
     return ResultCode::ERR_UNSUPPORTED;
   }
 
-  ResultCode compact(GraphSpaceID) override { return ResultCode::ERR_UNSUPPORTED; }
+  ResultCode compact(GraphSpaceID) override {
+    return ResultCode::ERR_UNSUPPORTED;
+  }
 
-  ResultCode flush(GraphSpaceID) override { return ResultCode::ERR_UNSUPPORTED; }
+  ResultCode flush(GraphSpaceID) override {
+    return ResultCode::ERR_UNSUPPORTED;
+  }
 
   ResultCode createCheckpoint(GraphSpaceID, const std::string&) override {
     return ResultCode::ERR_UNSUPPORTED;
@@ -184,7 +212,9 @@ class HBaseStore : public KVStore {
     return ResultCode::ERR_UNSUPPORTED;
   }
 
-  ResultCode setWriteBlocking(GraphSpaceID, bool) override { return ResultCode::ERR_UNSUPPORTED; }
+  ResultCode setWriteBlocking(GraphSpaceID, bool) override {
+    return ResultCode::ERR_UNSUPPORTED;
+  }
 
  private:
   std::string getRowKey(const std::string& key) {

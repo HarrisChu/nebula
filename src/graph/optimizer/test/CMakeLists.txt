@@ -5,7 +5,6 @@
 
 set(OPTIMIZER_TEST_LIB
     $<TARGET_OBJECTS:base_obj>
-    $<TARGET_OBJECTS:concurrent_obj>
     $<TARGET_OBJECTS:datatypes_obj>
     $<TARGET_OBJECTS:expression_obj>
     $<TARGET_OBJECTS:function_manager_obj>
@@ -24,7 +23,6 @@ set(OPTIMIZER_TEST_LIB
     $<TARGET_OBJECTS:thread_obj>
     $<TARGET_OBJECTS:file_based_cluster_id_man_obj>
     $<TARGET_OBJECTS:charset_obj>
-    $<TARGET_OBJECTS:encryption_obj>
     $<TARGET_OBJECTS:http_client_obj>
     $<TARGET_OBJECTS:process_obj>
     $<TARGET_OBJECTS:time_utils_obj>
@@ -45,10 +43,22 @@ set(OPTIMIZER_TEST_LIB
     $<TARGET_OBJECTS:graph_context_obj>
     $<TARGET_OBJECTS:validator_obj>
     $<TARGET_OBJECTS:optimizer_obj>
+    $<TARGET_OBJECTS:plan_node_visitor_obj>
     $<TARGET_OBJECTS:ssl_obj>
     $<TARGET_OBJECTS:memory_obj>
     $<TARGET_OBJECTS:geo_index_obj>
+    $<TARGET_OBJECTS:stats_obj>
+    $<TARGET_OBJECTS:graph_stats_obj>
+    $<TARGET_OBJECTS:meta_client_stats_obj>
+    $<TARGET_OBJECTS:storage_client_stats_obj>
 )
+
+if(ENABLE_STANDALONE_VERSION)
+set(OPTIMIZER_TEST_LIB
+    ${OPTIMIZER_TEST_LIB}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+)
+endif()
 
 nebula_add_test(
     NAME

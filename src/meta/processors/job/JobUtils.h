@@ -6,11 +6,11 @@
 #ifndef META_JOBUTIL_H_
 #define META_JOBUTIL_H_
 
-#include <folly/Optional.h>
 #include <folly/Range.h>
 #include <folly/String.h>
 
 #include <ctime>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,8 +33,22 @@ class JobUtil {
     return *reinterpret_cast<const T*>(rawVal.data() + offset);
   }
 
+  /**
+   * @brief Get a string from a serialized value
+   *
+   * @param rawVal string to read
+   * @param offset from where to read the string
+   * @return
+   */
   static std::string parseString(folly::StringPiece rawVal, size_t offset);
 
+  /**
+   * @brief Get vector of string from a serialized value
+   *
+   * @param rawVal
+   * @param offset
+   * @return
+   */
   static std::vector<std::string> parseStrVector(folly::StringPiece rawVal, size_t* offset);
 };
 

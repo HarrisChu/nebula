@@ -19,11 +19,11 @@ std::ostream& operator<<(std::ostream& os, nebula::cpp2::PropertyType type) {
 std::string SchemaPropItem::toString() const {
   switch (propType_) {
     case TTL_DURATION:
-      return folly::stringPrintf("ttl_duration = %ld", boost::get<int64_t>(propValue_));
+      return folly::stringPrintf("ttl_duration = %ld", std::get<int64_t>(propValue_));
     case TTL_COL:
-      return folly::stringPrintf("ttl_col = \"%s\"", boost::get<std::string>(propValue_).c_str());
+      return folly::stringPrintf("ttl_col = \"%s\"", std::get<std::string>(propValue_).c_str());
     case COMMENT:
-      return folly::stringPrintf("comment = \"%s\"", boost::get<std::string>(propValue_).c_str());
+      return folly::stringPrintf("comment = \"%s\"", std::get<std::string>(propValue_).c_str());
   }
   DLOG(FATAL) << "Schema property type illegal";
   return "Unknown";
@@ -232,6 +232,31 @@ std::string DropEdgeSentence::toString() const {
   return folly::stringPrintf("DROP EDGE %s", name_.get()->c_str());
 }
 
+std::string IndexParamItem::toString() const {
+  switch (paramType_) {
+    case S2_MAX_LEVEL:
+      return folly::stringPrintf("s2_max_level = %ld", paramValue_.getInt());
+    case S2_MAX_CELLS:
+      return folly::stringPrintf("s2_max_cells = \"%ld\"", paramValue_.getInt());
+  }
+  DLOG(FATAL) << "Index param type illegal";
+  return "Unknown";
+}
+
+std::string IndexParamList::toString() const {
+  std::string buf;
+  buf.reserve(256);
+  for (auto& item : items_) {
+    buf += " ";
+    buf += item->toString();
+    buf += ",";
+  }
+  if (!buf.empty()) {
+    buf.resize(buf.size() - 1);
+  }
+  return buf;
+}
+
 std::string CreateTagIndexSentence::toString() const {
   std::string buf;
   buf.reserve(256);
@@ -255,8 +280,17 @@ std::string CreateTagIndexSentence::toString() const {
   folly::join(", ", fieldDefs, fields);
   buf += fields;
   buf += ")";
+  std::string params;
+  if (indexParams_ != nullptr) {
+    params = indexParams_->toString();
+  }
+  if (!params.empty()) {
+    buf += "WITH (";
+    buf += params;
+    buf += ")";
+  }
   if (comment_ != nullptr) {
-    buf += "COMMENT = ";
+    buf += "COMMENT ";
     buf += *comment_;
   }
   return buf;
@@ -285,8 +319,17 @@ std::string CreateEdgeIndexSentence::toString() const {
   folly::join(", ", fieldDefs, fields);
   buf += fields;
   buf += ")";
+  std::string params;
+  if (indexParams_ != nullptr) {
+    params = indexParams_->toString();
+  }
+  if (!params.empty()) {
+    buf += "WITH (";
+    buf += params;
+    buf += ")";
+  }
   if (comment_ != nullptr) {
-    buf += "COMMENT = ";
+    buf += "COMMENT ";
     buf += *comment_;
   }
   return buf;
@@ -308,9 +351,13 @@ std::string DropEdgeIndexSentence::toString() const {
   return folly::stringPrintf("DROP EDGE INDEX %s", indexName_.get()->c_str());
 }
 
-std::string ShowTagsSentence::toString() const { return folly::stringPrintf("SHOW TAGS"); }
+std::string ShowTagsSentence::toString() const {
+  return folly::stringPrintf("SHOW TAGS");
+}
 
-std::string ShowEdgesSentence::toString() const { return folly::stringPrintf("SHOW EDGES"); }
+std::string ShowEdgesSentence::toString() const {
+  return folly::stringPrintf("SHOW EDGES");
+}
 
 std::string ShowCreateTagSentence::toString() const {
   return folly::stringPrintf("SHOW CREATE TAG %s", name_.get()->c_str());
@@ -379,43 +426,44 @@ std::string MergeZoneSentence::toString() const {
   buf.reserve(128);
   buf += "MERGE ZONE ";
   buf += zoneNames_->toString();
-  buf += " INTO \"";
+  buf += " INTO `";
   buf += *zoneName_;
-  buf += "\"";
+  buf += "`";
   return buf;
 }
 
 std::string DropZoneSentence::toString() const {
-  return folly::stringPrintf("DROP ZONE \"%s\"", zoneName_.get()->c_str());
+  return folly::stringPrintf("DROP ZONE `%s`", zoneName_.get()->c_str());
 }
 
-std::string SplitZoneSentence::toString() const {
+std::string DivideZoneSentence::toString() const {
   std::string buf;
   buf.reserve(128);
-  buf += "SPLIT ZONE \"";
+  buf += "DIVIDE ZONE `";
   buf += *zoneName_;
-  buf += "\" INTO \"";
-  buf += zoneNames_->toString();
-  buf += "\"";
+  buf += "` INTO ";
+  buf += zoneItems_->toString();
   return buf;
 }
 
 std::string RenameZoneSentence::toString() const {
   std::string buf;
   buf.reserve(128);
-  buf += "RENAME ZONE \"";
+  buf += "RENAME ZONE `";
   buf += *originalZoneName_;
-  buf += "\" TO \"";
+  buf += "` TO `";
   buf += *zoneName_;
-  buf += "\"";
+  buf += "`";
   return buf;
 }
 
 std::string DescribeZoneSentence::toString() const {
-  return folly::stringPrintf("DESCRIBE ZONE \"%s\"", zoneName_.get()->c_str());
+  return folly::stringPrintf("DESCRIBE ZONE `%s`", zoneName_.get()->c_str());
 }
 
-std::string ListZonesSentence::toString() const { return folly::stringPrintf("SHOW ZONES"); }
+std::string ShowZonesSentence::toString() const {
+  return folly::stringPrintf("SHOW ZONES");
+}
 
 std::string AddHostsIntoZoneSentence::toString() const {
   std::string buf;
@@ -423,12 +471,12 @@ std::string AddHostsIntoZoneSentence::toString() const {
   buf += "ADD HOSTS ";
   buf += address_->toString();
   if (isNew_) {
-    buf += " INTO NEW ZONE \"";
+    buf += " INTO NEW ZONE `";
   } else {
-    buf += " INTO ZONE \"";
+    buf += " INTO ZONE `";
   }
   buf += *zoneName_;
-  buf += "\"";
+  buf += "`";
   return buf;
 }
 
@@ -461,6 +509,8 @@ std::string DropFTIndexSentence::toString() const {
   return folly::stringPrintf("DROP FULLTEXT INDEX %s", indexName_.get()->c_str());
 }
 
-std::string ShowFTIndexesSentence::toString() const { return "SHOW FULLTEXT INDEXES"; }
+std::string ShowFTIndexesSentence::toString() const {
+  return "SHOW FULLTEXT INDEXES";
+}
 
 }  // namespace nebula

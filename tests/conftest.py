@@ -11,15 +11,15 @@ import logging
 
 from tests.common.configs import all_configs
 from tests.common.types import SpaceDesc
-from tests.common.utils import get_conn_pool
+from tests.common.utils import get_conn_pool, get_ssl_config
 from tests.common.constants import NB_TMP_PATH, SPACE_TMP_PATH, BUILD_DIR, NEBULA_HOME
 from tests.common.nebula_service import NebulaService
 
-from nebula2.fbthrift.transport import TSocket
-from nebula2.fbthrift.transport import TTransport
-from nebula2.fbthrift.protocol import TBinaryProtocol
-from nebula2.gclient.net import Connection
-from nebula2.graph import GraphService
+from nebula3.fbthrift.transport import TSocket
+from nebula3.fbthrift.transport import TTransport
+from nebula3.fbthrift.protocol import TBinaryProtocol
+from nebula3.gclient.net import Connection
+from nebula3.graph import GraphService
 
 
 tests_collected = set()
@@ -73,7 +73,8 @@ def pytest_bdd_step_error(request, feature, scenario, step, step_func, step_func
     if step_func_args.get("graph_spaces") is not None:
         graph_spaces = step_func_args.get("graph_spaces")
         if graph_spaces.get("space_desc") is not None:
-            logging.info("error space is {}".format(graph_spaces.get("space_desc")))
+            logging.info("error space is {}".format(
+                graph_spaces.get("space_desc")))
 
 
 def pytest_configure(config):
@@ -110,19 +111,35 @@ def get_ports():
             raise Exception(f"Invalid port: {port}")
         return port
 
+
+def get_ssl_config_from_tmp():
+    with open(NB_TMP_PATH, "r") as f:
+        data = json.loads(f.readline())
+        is_graph_ssl = (
+            data.get("enable_ssl", "false").upper() == "TRUE"
+            or data.get("enable_graph_ssl", "false").upper() == "TRUE"
+        )
+        ca_signed = data.get("ca_signed", "false").upper() == "TRUE"
+        return get_ssl_config(is_graph_ssl, ca_signed)
+
+
 @pytest.fixture(scope="class")
 def class_fixture_variables():
     """save class scope fixture, used for session update.
     """
     # cluster is the instance of NebulaService
+    # current_session is the session currently using
+    # sessions is a list of all sessions in the cluster
     res = dict(
         pool=None,
-        session=None,
+        current_session=None,
         cluster=None,
+        sessions=[],
     )
     yield res
-    if res["session"] is not None:
-        res["session"].release()
+    for sess in res["sessions"]:
+        if sess is not None:
+            sess.release()
     if res["pool"] is not None:
         res["pool"].close()
     if res["cluster"] is not None:
@@ -136,7 +153,8 @@ def conn_pool_to_first_graph_service(pytestconfig):
     addr = pytestconfig.getoption("address")
     host_addr = addr.split(":") if addr else ["localhost", get_ports()[0]]
     assert len(host_addr) == 2
-    pool = get_conn_pool(host_addr[0], host_addr[1])
+    ssl_config = get_ssl_config_from_tmp()
+    pool = get_conn_pool(host_addr[0], host_addr[1], ssl_config)
     yield pool
     pool.close()
 
@@ -146,7 +164,8 @@ def conn_pool_to_second_graph_service(pytestconfig):
     addr = pytestconfig.getoption("address")
     host_addr = ["localhost", get_ports()[1]]
     assert len(host_addr) == 2
-    pool = get_conn_pool(host_addr[0], host_addr[1])
+    ssl_config = get_ssl_config_from_tmp()
+    pool = get_conn_pool(host_addr[0], host_addr[1], ssl_config)
     yield pool
     pool.close()
 
@@ -176,8 +195,8 @@ def session_from_second_conn_pool(conn_pool_to_second_graph_service, pytestconfi
 
 @pytest.fixture(scope="class")
 def session(session_from_first_conn_pool, class_fixture_variables):
-    if class_fixture_variables.get('session', None) is not None:
-        return class_fixture_variables.get('session')
+    if class_fixture_variables.get('current_session', None) is not None:
+        return class_fixture_variables.get('current_session')
     return session_from_first_conn_pool
 
 
@@ -197,6 +216,11 @@ def load_nba_data():
 @pytest.fixture(scope="session")
 def load_nba_int_vid_data():
     yield load_csv_data_once("nba_int_vid")
+
+
+@pytest.fixture(scope="session")
+def load_ldbc_v0_3_3():
+    yield load_csv_data_once("ldbc_v0_3_3")
 
 
 @pytest.fixture(scope="session")
@@ -241,12 +265,8 @@ def workarround_for_class(
         request.cls.cleanup()
         request.cls.drop_data()
 
+
 @pytest.fixture(scope="class")
-def establish_a_rare_connection(pytestconfig):
-    addr = pytestconfig.getoption("address")
-    host_addr = addr.split(":") if addr else ["localhost", get_ports()[0]]
-    socket = TSocket.TSocket(host_addr[0], host_addr[1])
-    transport = TTransport.TBufferedTransport(socket)
-    protocol = TBinaryProtocol.TBinaryProtocol(transport)
-    transport.open()
-    return GraphService.Client(protocol)
+def establish_a_rare_connection(conn_pool, pytestconfig):
+    conn = conn_pool.get_connection()
+    return conn._connection

@@ -57,16 +57,17 @@ struct JobCallBack {
 
   folly::Future<nebula::Status> operator()() {
     cpp2::ReportTaskReq req;
-    req.set_code(nebula::cpp2::ErrorCode::SUCCEEDED);
-    req.set_job_id(jobId_);
-    req.set_task_id(taskId_);
+    req.code_ref() = nebula::cpp2::ErrorCode::SUCCEEDED;
+    req.job_id_ref() = jobId_;
+    req.task_id_ref() = taskId_;
 
     cpp2::StatsItem item;
-    item.set_tag_vertices({{"t1", n_}, {"t2", n_}});
-    item.set_edges({{"e1", n_}, {"e2", n_}});
-    item.set_space_vertices(2 * n_);
-    item.set_space_edges(2 * n_);
-    req.set_stats(item);
+    item.tag_vertices_ref() = {{"t1", n_}, {"t2", n_}};
+    item.edges_ref() = {{"e1", n_}, {"e2", n_}};
+    item.space_vertices_ref() = 2 * n_;
+    item.space_edges_ref() = 2 * n_;
+    req.stats_ref() = item;
+    jobMgr_->muJobFinished_.unlock();
     jobMgr_->reportTaskFinish(req);
     return folly::Future<Status>(Status::OK());
   }
@@ -86,6 +87,8 @@ class GetStatsTest : public ::testing::Test {
 
     DefaultValue<folly::Future<Status>>::SetFactory(
         [] { return folly::Future<Status>(Status::OK()); });
+    DefaultValue<folly::Future<StatusOr<bool>>>::SetFactory(
+        [] { return folly::Future<StatusOr<bool>>(true); });
 
     jobMgr = JobManager::getInstance();
     jobMgr->status_ = JobManager::JbmgrStatus::NOT_START;
@@ -106,8 +109,8 @@ class GetStatsTest : public ::testing::Test {
     ActiveHostsMan::AllLeaders leaders;
     for (auto i = 0U; i != parts.size(); ++i) {
       leaders[space].emplace_back();
-      leaders[space].back().set_part_id(parts[i]);
-      leaders[space].back().set_term(9999);
+      leaders[space].back().part_id_ref() = parts[i];
+      leaders[space].back().term_ref() = 9999;
     }
     return std::make_pair(host, leaders);
   }
@@ -122,7 +125,7 @@ TEST_F(GetStatsTest, StatsJob) {
   TestUtils::assembleSpace(kv_.get(), 1, 1);
   GraphSpaceID spaceId = 1;
   std::vector<std::string> paras{"test_space"};
-  JobDescription statsJob(12, cpp2::AdminCmd::STATS, paras);
+  JobDescription statsJob(12, cpp2::JobType::STATS, paras);
   NiceMock<MockAdminClient> adminClient;
   jobMgr->adminClient_ = &adminClient;
   auto rc = jobMgr->save(statsJob.jobKey(), statsJob.jobVal());
@@ -138,7 +141,7 @@ TEST_F(GetStatsTest, StatsJob) {
     ASSERT_EQ(cpp2::JobStatus::QUEUE, job1.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -181,7 +184,7 @@ TEST_F(GetStatsTest, StatsJob) {
     ASSERT_EQ(cpp2::JobStatus::FINISHED, job2.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -214,7 +217,7 @@ TEST_F(GetStatsTest, StatsJob) {
 
   // Execute new stats job in same space.
   std::vector<std::string> paras1{"test_space"};
-  JobDescription statsJob2(13, cpp2::AdminCmd::STATS, paras1);
+  JobDescription statsJob2(13, cpp2::JobType::STATS, paras1);
   auto rc2 = jobMgr->save(statsJob2.jobKey(), statsJob2.jobVal());
   ASSERT_EQ(rc2, nebula::cpp2::ErrorCode::SUCCEEDED);
   {
@@ -229,7 +232,7 @@ TEST_F(GetStatsTest, StatsJob) {
 
     // Success,  but stats data is the result of the last stats job.
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -283,7 +286,7 @@ TEST_F(GetStatsTest, StatsJob) {
     ASSERT_NE(nebula::cpp2::ErrorCode::SUCCEEDED, ret);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -318,7 +321,7 @@ TEST_F(GetStatsTest, StatsJob) {
     ASSERT_EQ(cpp2::JobStatus::FINISHED, job2.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -356,28 +359,31 @@ TEST_F(GetStatsTest, MockSingleMachineTest) {
 
   ASSERT_TRUE(TestUtils::createSomeHosts(kv_.get()));
   TestUtils::assembleSpace(kv_.get(), 1, 1, 1, 1);
+  std::vector<kvstore::KV> data;
   for (const auto& entry : allStorage) {
     auto now = time::WallClock::fastNowInMilliSec();
     auto ret = ActiveHostsMan::updateHostInfo(kv_.get(),
                                               entry.first,
                                               HostInfo(now, cpp2::HostRole::STORAGE, gitInfoSha()),
+                                              data,
                                               &entry.second);
     ASSERT_EQ(ret, nebula::cpp2::ErrorCode::SUCCEEDED);
   }
 
+  TestUtils::doPut(kv_.get(), data);
   NiceMock<MockAdminClient> adminClient;
   jobMgr->adminClient_ = &adminClient;
 
   // add stats job1
   JobID jobId1 = 1;
   std::vector<std::string> paras{"test_space"};
-  JobDescription job1(jobId1, cpp2::AdminCmd::STATS, paras);
+  JobDescription job1(jobId1, cpp2::JobType::STATS, paras);
   jobMgr->addJob(job1, &adminClient);
 
   JobCallBack cb1(jobMgr, jobId1, 0, 100);
   JobCallBack cb2(jobMgr, 2, 0, 200);
 
-  EXPECT_CALL(adminClient, addTask(_, _, _, _, _, _, _, _, _))
+  EXPECT_CALL(adminClient, addTask(_, _, _, _, _, _, _))
       .Times(2)
       .WillOnce(testing::InvokeWithoutArgs(cb1))
       .WillOnce(testing::InvokeWithoutArgs(cb2));
@@ -392,7 +398,7 @@ TEST_F(GetStatsTest, MockSingleMachineTest) {
     ASSERT_EQ(cpp2::JobStatus::FINISHED, desc.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -419,7 +425,7 @@ TEST_F(GetStatsTest, MockSingleMachineTest) {
 
   // add stats job2 of same space
   JobID jobId2 = 2;
-  JobDescription job2(jobId2, cpp2::AdminCmd::STATS, paras);
+  JobDescription job2(jobId2, cpp2::JobType::STATS, paras);
   jobMgr->addJob(job2, &adminClient);
 
   // check job result
@@ -432,7 +438,7 @@ TEST_F(GetStatsTest, MockSingleMachineTest) {
     ASSERT_EQ(cpp2::JobStatus::FINISHED, desc.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);
@@ -471,29 +477,32 @@ TEST_F(GetStatsTest, MockMultiMachineTest) {
 
   ASSERT_TRUE(TestUtils::createSomeHosts(kv_.get()));
   TestUtils::assembleSpace(kv_.get(), 1, 6, 3, 3);
+  std::vector<kvstore::KV> data;
   for (const auto& entry : allStorage) {
     auto now = time::WallClock::fastNowInMilliSec();
     auto ret = ActiveHostsMan::updateHostInfo(kv_.get(),
                                               entry.first,
                                               HostInfo(now, cpp2::HostRole::STORAGE, gitInfoSha()),
+                                              data,
                                               &entry.second);
     ASSERT_EQ(nebula::cpp2::ErrorCode::SUCCEEDED, ret);
   }
 
+  TestUtils::doPut(kv_.get(), data);
   NiceMock<MockAdminClient> adminClient;
   jobMgr->adminClient_ = &adminClient;
 
   // add stats job
   JobID jobId = 1;
   std::vector<std::string> paras{"test_space"};
-  JobDescription job(jobId, cpp2::AdminCmd::STATS, paras);
+  JobDescription job(jobId, cpp2::JobType::STATS, paras);
   jobMgr->addJob(job, &adminClient);
 
   JobCallBack cb1(jobMgr, jobId, 0, 100);
   JobCallBack cb2(jobMgr, jobId, 1, 200);
   JobCallBack cb3(jobMgr, jobId, 2, 300);
 
-  EXPECT_CALL(adminClient, addTask(_, _, _, _, _, _, _, _, _))
+  EXPECT_CALL(adminClient, addTask(_, _, _, _, _, _, _))
       .Times(3)
       .WillOnce(testing::InvokeWithoutArgs(cb1))
       .WillOnce(testing::InvokeWithoutArgs(cb2))
@@ -509,7 +518,7 @@ TEST_F(GetStatsTest, MockMultiMachineTest) {
     ASSERT_EQ(cpp2::JobStatus::FINISHED, desc.status_);
 
     cpp2::GetStatsReq req;
-    req.set_space_id(spaceId);
+    req.space_id_ref() = spaceId;
     auto* processor = GetStatsProcessor::instance(kv_.get());
     auto f = processor->getFuture();
     processor->process(req);

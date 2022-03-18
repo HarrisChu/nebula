@@ -6,6 +6,8 @@
 #ifndef GRAPH_SERVICE_QUERYINSTANCE_H_
 #define GRAPH_SERVICE_QUERYINSTANCE_H_
 
+#include <boost/core/noncopyable.hpp>
+
 #include "common/base/Status.h"
 #include "common/cpp/helpers.h"
 #include "graph/context/QueryContext.h"
@@ -22,14 +24,17 @@
 namespace nebula {
 namespace graph {
 
-class QueryInstance final : public cpp::NonCopyable, public cpp::NonMovable {
+class QueryInstance final : public boost::noncopyable, public cpp::NonMovable {
  public:
-  explicit QueryInstance(std::unique_ptr<QueryContext> qctx, opt::Optimizer* optimizer);
+  QueryInstance(std::unique_ptr<QueryContext> qctx, opt::Optimizer* optimizer);
   ~QueryInstance() = default;
 
+  // Entrance of the Validate, Optimize, Schedule, Execute process
   void execute();
 
-  QueryContext* qctx() const { return qctx_.get(); }
+  QueryContext* qctx() const {
+    return qctx_.get();
+  }
 
  private:
   /**
@@ -47,9 +52,9 @@ class QueryInstance final : public cpp::NonCopyable, public cpp::NonMovable {
   void onError(Status);
 
   Status validateAndOptimize();
-  // return true if continue to execute
+  // Return true if continue to execute
   bool explainOrContinue();
-  void addSlowQueryStats(uint64_t latency) const;
+  void addSlowQueryStats(uint64_t latency, const std::string& spaceName) const;
   void fillRespData(ExecutionResponse* resp);
   Status findBestPlan();
 

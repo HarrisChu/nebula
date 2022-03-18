@@ -5,6 +5,8 @@
 
 #include "codec/RowWriterV2.h"
 
+#include <cmath>
+
 #include "common/time/TimeUtils.h"
 #include "common/time/WallClock.h"
 #include "common/utils/DefaultValueContext.h"
@@ -286,7 +288,7 @@ WriteResult RowWriterV2::write(ssize_t index, float v) noexcept {
       if (v > std::numeric_limits<int8_t>::max() || v < std::numeric_limits<int8_t>::min()) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int8_t iv = v;
+      int8_t iv = std::round(v);
       buf_[offset] = iv;
       break;
     }
@@ -294,7 +296,7 @@ WriteResult RowWriterV2::write(ssize_t index, float v) noexcept {
       if (v > std::numeric_limits<int16_t>::max() || v < std::numeric_limits<int16_t>::min()) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int16_t iv = v;
+      int16_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int16_t));
       break;
     }
@@ -303,7 +305,7 @@ WriteResult RowWriterV2::write(ssize_t index, float v) noexcept {
           v < static_cast<float>(std::numeric_limits<int32_t>::min())) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int32_t iv = v;
+      int32_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int32_t));
       break;
     }
@@ -312,7 +314,7 @@ WriteResult RowWriterV2::write(ssize_t index, float v) noexcept {
           v < static_cast<float>(std::numeric_limits<int64_t>::min())) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int64_t iv = v;
+      int64_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int64_t));
       break;
     }
@@ -343,7 +345,7 @@ WriteResult RowWriterV2::write(ssize_t index, double v) noexcept {
       if (v > std::numeric_limits<int8_t>::max() || v < std::numeric_limits<int8_t>::min()) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int8_t iv = v;
+      int8_t iv = std::round(v);
       buf_[offset] = iv;
       break;
     }
@@ -351,7 +353,7 @@ WriteResult RowWriterV2::write(ssize_t index, double v) noexcept {
       if (v > std::numeric_limits<int16_t>::max() || v < std::numeric_limits<int16_t>::min()) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int16_t iv = v;
+      int16_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int16_t));
       break;
     }
@@ -359,7 +361,7 @@ WriteResult RowWriterV2::write(ssize_t index, double v) noexcept {
       if (v > std::numeric_limits<int32_t>::max() || v < std::numeric_limits<int32_t>::min()) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int32_t iv = v;
+      int32_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int32_t));
       break;
     }
@@ -368,7 +370,7 @@ WriteResult RowWriterV2::write(ssize_t index, double v) noexcept {
           v < static_cast<double>(std::numeric_limits<int64_t>::min())) {
         return WriteResult::OUT_OF_RANGE;
       }
-      int64_t iv = v;
+      int64_t iv = std::round(v);
       memcpy(&buf_[offset], reinterpret_cast<void*>(&iv), sizeof(int64_t));
       break;
     }
@@ -813,7 +815,9 @@ WriteResult RowWriterV2::checkUnsetFields() noexcept {
 
       WriteResult r = WriteResult::SUCCEEDED;
       if (field->hasDefault()) {
-        auto expr = field->defaultValue()->clone();
+        ObjectPool pool;
+        auto& exprStr = field->defaultValue();
+        auto expr = Expression::decode(&pool, folly::StringPiece(exprStr.data(), exprStr.size()));
         auto defVal = Expression::eval(expr, expCtx);
         switch (defVal.type()) {
           case Value::Type::NULLVALUE:
@@ -849,7 +853,7 @@ WriteResult RowWriterV2::checkUnsetFields() noexcept {
           default:
             LOG(FATAL) << "Unsupported default value type: " << defVal.typeName()
                        << ", default value: " << defVal
-                       << ", default value expr: " << field->defaultValue()->toString();
+                       << ", default value expr: " << field->defaultValue();
         }
       } else {
         // Set NULL

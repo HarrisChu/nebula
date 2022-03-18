@@ -5,29 +5,30 @@
 
 #include "meta/processors/zone/DropHostsProcessor.h"
 
+#include "kvstore/LogEncoder.h"
+
 namespace nebula {
 namespace meta {
 
 void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
-  folly::SharedMutex::WriteHolder zHolder(LockUtils::zoneLock());
-  folly::SharedMutex::WriteHolder mHolder(LockUtils::machineLock());
+  folly::SharedMutex::WriteHolder lockHolder(LockUtils::lock());
   auto hosts = req.get_hosts();
   if (std::unique(hosts.begin(), hosts.end()) != hosts.end()) {
-    LOG(ERROR) << "Hosts have duplicated element";
+    LOG(INFO) << "Hosts have duplicated element";
     handleErrorCode(nebula::cpp2::ErrorCode::E_INVALID_PARM);
     onFinished();
     return;
   }
 
   if (hosts.empty()) {
-    LOG(ERROR) << "Hosts is empty";
+    LOG(INFO) << "Hosts is empty";
     handleErrorCode(nebula::cpp2::ErrorCode::E_INVALID_PARM);
     onFinished();
     return;
   }
 
   std::vector<std::string> data;
-  std::vector<kvstore::KV> rewriteData;
+  auto holder = std::make_unique<kvstore::BatchHolder>();
   // Check that partition is not held on the host
   const auto& spacePrefix = MetaKeyUtils::spacePrefix();
   auto spaceIterRet = doPrefix(spacePrefix);
@@ -39,8 +40,8 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
     auto ret = doGet(spaceKey);
     if (!nebula::ok(ret)) {
       code = nebula::error(ret);
-      LOG(ERROR) << "Get Space " << spaceId
-                 << " error: " << apache::thrift::util::enumNameSafe(code);
+      LOG(INFO) << "Get Space " << spaceId
+                << " error: " << apache::thrift::util::enumNameSafe(code);
       break;
     }
 
@@ -51,7 +52,7 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
       auto partHosts = MetaKeyUtils::parsePartVal(partIter->val());
       for (auto& h : partHosts) {
         if (std::find(hosts.begin(), hosts.end(), h) != hosts.end()) {
-          LOG(ERROR) << h << " is related with partition";
+          LOG(INFO) << h << " is related with partition";
           code = nebula::cpp2::ErrorCode::E_CONFLICT;
           break;
         }
@@ -72,7 +73,7 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
   auto iterRet = doPrefix(prefix);
   if (!nebula::ok(iterRet)) {
     auto retCode = nebula::error(iterRet);
-    LOG(ERROR) << "List zones failed, error: " << apache::thrift::util::enumNameSafe(retCode);
+    LOG(INFO) << "List zones failed, error: " << apache::thrift::util::enumNameSafe(retCode);
     handleErrorCode(retCode);
     onFinished();
     return;
@@ -81,23 +82,20 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
   auto iter = nebula::value(iterRet).get();
   while (iter->valid()) {
     auto zoneKey = iter->key();
+    auto zoneName = MetaKeyUtils::parseZoneName(zoneKey);
     auto hs = MetaKeyUtils::parseZoneHosts(iter->val());
     // Delete all hosts in the zone
     if (std::all_of(hs.begin(), hs.end(), [&hosts](auto& h) {
           return std::find(hosts.begin(), hosts.end(), h) != hosts.end();
         })) {
-      auto zoneName = MetaKeyUtils::parseZoneName(zoneKey);
       LOG(INFO) << "Drop zone " << zoneName;
-      auto result = checkRelatedSpaceAndCollect(zoneName);
-      if (!nebula::ok(result)) {
-        LOG(ERROR) << "Check related space failed";
-        code = nebula::error(result);
+      code = checkRelatedSpaceAndCollect(zoneName, holder.get());
+      if (code != nebula::cpp2::ErrorCode::SUCCEEDED) {
+        LOG(INFO) << "Check related space failed";
         break;
       }
 
-      const auto& rewrites = nebula::value(result);
-      rewriteData.insert(rewriteData.end(), rewrites.begin(), rewrites.end());
-      data.emplace_back(zoneKey);
+      holder->remove(MetaKeyUtils::zoneKey(zoneName));
     } else {
       // Delete some hosts in the zone
       for (auto& h : hosts) {
@@ -109,11 +107,9 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
 
       auto zoneValue = MetaKeyUtils::zoneVal(hs);
       LOG(INFO) << "Zone Value: " << zoneValue;
-      rewriteData.emplace_back(std::move(zoneKey), std::move(zoneValue));
+      holder->put(MetaKeyUtils::zoneKey(zoneName), std::move(zoneValue));
     }
-    if (code != nebula::cpp2::ErrorCode::SUCCEEDED) {
-      break;
-    }
+    CHECK_CODE_AND_BREAK();
     iter->next();
   }
 
@@ -128,11 +124,19 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
     auto machineKey = MetaKeyUtils::machineKey(host.host, host.port);
     auto ret = machineExist(machineKey);
     if (ret != nebula::cpp2::ErrorCode::SUCCEEDED) {
-      LOG(ERROR) << "The host " << HostAddr(host.host, host.port) << " not existed!";
+      LOG(INFO) << "The machine " << host << " not existed!";
       code = nebula::cpp2::ErrorCode::E_NO_HOSTS;
       break;
     }
-    data.emplace_back(std::move(machineKey));
+    holder->remove(std::move(machineKey));
+
+    auto hostKey = MetaKeyUtils::hostKey(host.host, host.port);
+    ret = hostExist(hostKey);
+    if (ret != nebula::cpp2::ErrorCode::SUCCEEDED) {
+      LOG(INFO) << "The host " << host << " not existed!";
+    } else {
+      holder->remove(std::move(hostKey));
+    }
   }
 
   if (code != nebula::cpp2::ErrorCode::SUCCEEDED) {
@@ -141,27 +145,18 @@ void DropHostsProcessor::process(const cpp2::DropHostsReq& req) {
     return;
   }
 
-  resp_.set_code(nebula::cpp2::ErrorCode::SUCCEEDED);
-  folly::Baton<true, std::atomic> baton;
-  kvstore_->asyncMultiRemove(kDefaultSpaceId,
-                             kDefaultPartId,
-                             std::move(data),
-                             [this, &baton](nebula::cpp2::ErrorCode result) {
-                               this->handleErrorCode(result);
-                               baton.post();
-                             });
-  baton.wait();
-  doSyncPutAndUpdate(std::move(rewriteData));
+  resp_.code_ref() = nebula::cpp2::ErrorCode::SUCCEEDED;
+  auto batch = encodeBatchValue(std::move(holder)->getBatch());
+  doBatchOperation(std::move(batch));
 }
 
-ErrorOr<nebula::cpp2::ErrorCode, std::vector<kvstore::KV>>
-DropHostsProcessor::checkRelatedSpaceAndCollect(const std::string& zoneName) {
-  std::vector<kvstore::KV> data;
+nebula::cpp2::ErrorCode DropHostsProcessor::checkRelatedSpaceAndCollect(
+    const std::string& zoneName, kvstore::BatchHolder* holder) {
   const auto& prefix = MetaKeyUtils::spacePrefix();
   auto ret = doPrefix(prefix);
   if (!nebula::ok(ret)) {
     auto retCode = nebula::error(ret);
-    LOG(ERROR) << "List spaces failed, error " << apache::thrift::util::enumNameSafe(retCode);
+    LOG(INFO) << "List spaces failed, error " << apache::thrift::util::enumNameSafe(retCode);
     return nebula::cpp2::ErrorCode::E_KEY_NOT_FOUND;
   }
 
@@ -174,20 +169,21 @@ DropHostsProcessor::checkRelatedSpaceAndCollect(const std::string& zoneName) {
     auto it = std::find(zones.begin(), zones.end(), zoneName);
     if (it != zones.end()) {
       if (zones.size() == replicaFactor) {
-        LOG(ERROR) << "Zone size is same with replica factor";
+        LOG(INFO) << "Zone size is same with replica factor";
         return nebula::cpp2::ErrorCode::E_CONFLICT;
       } else {
         zones.erase(it);
-        properties.set_zone_names(zones);
+        properties.zone_names_ref() = zones;
 
         auto spaceKey = iter->key().data();
         auto spaceVal = MetaKeyUtils::spaceVal(properties);
-        data.emplace_back(std::move(spaceKey), std::move(spaceVal));
+        holder->put(std::move(spaceKey), std::move(spaceVal));
       }
     }
     iter->next();
   }
-  return data;
+
+  return nebula::cpp2::ErrorCode::SUCCEEDED;
 }
 
 }  // namespace meta

@@ -10,7 +10,7 @@ Feature: Push Limit down project rule
     When profiling query:
       """
       MATCH p=(v:player)-[]->(n)
-      WHERE id(v)=="Tim Duncan" and n.age>30
+      WHERE id(v)=="Tim Duncan" and n.player.age>30
       RETURN p LIMIT 100
       """
     Then the result should be, in any order:
@@ -23,7 +23,6 @@ Feature: Push Limit down project rule
       | <("Tim Duncan" :bachelor{name: "Tim Duncan", speciality: "psychology"} :player{age: 42, name: "Tim Duncan"})-[:like@0 {likeness: 95}]->("Tony Parker" :player{age: 36, name: "Tony Parker"})>                                     |
     And the execution plan should be:
       | id | name           | dependencies | operator info |
-      | 9  | DataCollect    | 19           |               |
       | 19 | Project        | 16           |               |
       | 16 | Limit          | 11           |               |
       | 11 | Filter         | 4            |               |

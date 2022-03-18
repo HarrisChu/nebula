@@ -6,6 +6,14 @@
 namespace nebula {
 namespace storage {
 
+/**
+ * @brief Handle vertex properties add fill tag context.
+ *
+ * @tparam REQ Request type.
+ * @tparam RESP Response type.
+ * @param vertexProps Vertex properties.
+ * @return nebula::cpp2::ErrorCode ErrorCode: E_TAG_NOT_FOUND or SUCCEEDED.
+ */
 template <typename REQ, typename RESP>
 nebula::cpp2::ErrorCode QueryBaseProcessor<REQ, RESP>::handleVertexProps(
     std::vector<cpp2::VertexProp>& vertexProps) {
@@ -159,7 +167,7 @@ void QueryBaseProcessor<REQ, RESP>::buildTagTTLInfo() {
 
     auto ttlInfo = tagSchema->getTTLInfo();
     if (ttlInfo.ok()) {
-      VLOG(2) << "Add ttl col " << ttlInfo.value().first << " of tag " << tagId;
+      VLOG(1) << "Add ttl col " << ttlInfo.value().first << " of tag " << tagId;
       tagContext_.ttlInfo_.emplace(tagId, std::move(ttlInfo).value());
     }
   }
@@ -175,8 +183,8 @@ void QueryBaseProcessor<REQ, RESP>::buildEdgeTTLInfo() {
 
     auto ttlInfo = edgeSchema->getTTLInfo();
     if (ttlInfo.ok()) {
-      VLOG(2) << "Add ttl col " << ttlInfo.value().first << " of edge " << edgeType;
-      edgeContext_.ttlInfo_.emplace(edgeType, std::move(ttlInfo).value());
+      VLOG(1) << "Add ttl col " << ttlInfo.value().first << " of edge " << edgeType;
+      edgeContext_.ttlInfo_.emplace(std::abs(edgeType), std::move(ttlInfo).value());
     }
   }
 }
@@ -186,7 +194,7 @@ std::vector<cpp2::VertexProp> QueryBaseProcessor<REQ, RESP>::buildAllTagProps() 
   std::vector<cpp2::VertexProp> result;
   for (const auto& entry : tagContext_.schemas_) {
     cpp2::VertexProp tagProp;
-    tagProp.set_tag(entry.first);
+    tagProp.tag_ref() = entry.first;
     const auto& schema = entry.second.back();
     auto count = schema->getNumFields();
     for (size_t i = 0; i < count; i++) {
@@ -207,9 +215,9 @@ std::vector<cpp2::EdgeProp> QueryBaseProcessor<REQ, RESP>::buildAllEdgeProps(
   std::vector<cpp2::EdgeProp> result;
   for (const auto& entry : edgeContext_.schemas_) {
     cpp2::EdgeProp edgeProp;
-    edgeProp.set_type(entry.first);
+    edgeProp.type_ref() = entry.first;
     if (direction == cpp2::EdgeDirection::IN_EDGE) {
-      edgeProp.set_type(-edgeProp.get_type());
+      edgeProp.type_ref() = -edgeProp.get_type();
     }
     const auto& schema = entry.second.back();
     auto count = schema->getNumFields();
@@ -219,7 +227,7 @@ std::vector<cpp2::EdgeProp> QueryBaseProcessor<REQ, RESP>::buildAllEdgeProps(
     }
     if (direction == cpp2::EdgeDirection::BOTH) {
       cpp2::EdgeProp reverse = edgeProp;
-      reverse.set_type(-edgeProp.get_type());
+      reverse.type_ref() = -edgeProp.get_type();
       result.emplace_back(std::move(reverse));
     }
     result.emplace_back(std::move(edgeProp));
@@ -583,6 +591,7 @@ nebula::cpp2::ErrorCode QueryBaseProcessor<REQ, RESP>::checkExp(const Expression
     case Expression::Kind::kInputProperty:
     case Expression::Kind::kSubscript:
     case Expression::Kind::kAttribute:
+    case Expression::Kind::kLabelTagProperty:
     case Expression::Kind::kLabelAttribute:
     case Expression::Kind::kVertex:
     case Expression::Kind::kEdge:
@@ -599,7 +608,7 @@ nebula::cpp2::ErrorCode QueryBaseProcessor<REQ, RESP>::checkExp(const Expression
     case Expression::Kind::kAggregate:
     case Expression::Kind::kSubscriptRange:
     case Expression::Kind::kVersionedVar: {
-      LOG(ERROR) << "Unimplemented expression type! kind = " << exp->kind();
+      LOG(INFO) << "Unimplemented expression type! kind = " << exp->kind();
       return nebula::cpp2::ErrorCode::E_INVALID_FILTER;
     }
   }

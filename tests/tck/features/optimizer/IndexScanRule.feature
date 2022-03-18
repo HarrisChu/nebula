@@ -10,7 +10,7 @@ Feature: Match index selection
     When profiling query:
       """
       MATCH (v:player)
-      WHERE v.name>"Tim Duncan" and  v.name<="Yao Ming"
+      WHERE v.player.name>"Tim Duncan" and  v.player.name<="Yao Ming"
       RETURN v
       """
     Then the result should be, in any order:
@@ -29,7 +29,7 @@ Feature: Match index selection
     When profiling query:
       """
       MATCH (v:player)
-      WHERE v.age>30 and v.age<=40
+      WHERE v.player.age>30 and v.player.age<=40
       RETURN v
       """
     Then the result should be, in any order:
@@ -71,10 +71,10 @@ Feature: Match index selection
       """
       MATCH (v:player)
       WHERE
-      v.name<="Aron Baynes"
-      or v.name>"Yao Ming"
-      or v.name=="Kobe Bryant"
-      or v.age>40
+      v.player.name<="Aron Baynes"
+      or v.player.name>"Yao Ming"
+      or v.player.name=="Kobe Bryant"
+      or v.player.age>40
       RETURN v
       """
     Then the result should be, in any order:
@@ -93,17 +93,18 @@ Feature: Match index selection
     And the execution plan should be:
       | id | name           | dependencies | operator info |
       | 6  | Project        | 2            |               |
-      | 2  | AppendVertices | 5            |               |
-      | 5  | IndexScan      | 0            |               |
-      | 0  | Start          |              |               |
+      | 9  | Filter         | 3            |               |
+      | 3  | AppendVertices | 7            |               |
+      | 7  | IndexScan      | 2            |               |
+      | 2  | Start          |              |               |
 
   Scenario: degenerate to full tag scan
     When profiling query:
       """
       MATCH (v:player)-[:like]->(n)
       WHERE
-      v.name<="Aron Baynes"
-      or n.age>45
+      v.player.name<="Aron Baynes"
+      or n.player.age>45
       RETURN v, n
       """
     Then the result should be, in any order:
@@ -127,11 +128,11 @@ Feature: Match index selection
       """
       MATCH (v:player)-[:like]->(n)
       WHERE
-      v.name<="Aron Baynes"
-      or v.age>45
+      v.player.name<="Aron Baynes"
+      or v.player.age>45
       or true
-      or v.age+1
-      or v.name
+      or v.player.age+1
+      or v.player.name
       RETURN count(*) AS count
       """
     Then the result should be, in any order:

@@ -3,7 +3,6 @@
  * This source code is licensed under Apache 2.0 License.
  */
 
-#include <folly/Benchmark.h>
 #include <folly/Format.h>
 #include <folly/String.h>
 #include <folly/container/Enumerate.h>
@@ -19,15 +18,14 @@
 #include "storage/test/QueryTestUtils.h"
 #include "storage/test/TestUtils.h"
 #include "storage/transaction/ChainAddEdgesGroupProcessor.h"
-#include "storage/transaction/ChainAddEdgesProcessorLocal.h"
-#include "storage/transaction/ChainResumeProcessor.h"
+#include "storage/transaction/ChainAddEdgesLocalProcessor.h"
 #include "storage/transaction/ConsistUtil.h"
 
 namespace nebula {
 namespace storage {
 
 constexpr int32_t mockSpaceId = 1;
-constexpr int32_t mockPartNum = 6;
+constexpr int32_t mockPartNum = 1;
 constexpr int32_t mockSpaceVidLen = 32;
 
 ChainTestUtils gTestUtil;
@@ -47,16 +45,19 @@ TEST(ChainResumeEdgesTest, resumeTest1) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::SUCCEEDED;
   proc->rcProcessLocal = nebula::cpp2::ErrorCode::SUCCEEDED;
 
   LOG(INFO) << "Build AddEdgesRequest...";
-  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, 1);
+  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, mockPartNum);
+
+  UPCLT iClient(FakeInternalStorageClient::instance(env));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
   auto fut = proc->getFuture();
   proc->process(req);
@@ -66,12 +67,12 @@ TEST(ChainResumeEdgesTest, resumeTest1) {
   EXPECT_EQ(334, numOfKey(req, gTestUtil.genPrime, env));
   EXPECT_EQ(0, numOfKey(req, gTestUtil.genDoublePrime, env));
 
-  env->txnMan_->scanPrimes(1, 1);
+  for (int32_t i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_EQ(334, numOfKey(req, gTestUtil.genKey, env));
   EXPECT_EQ(0, numOfKey(req, gTestUtil.genPrime, env));
@@ -92,16 +93,19 @@ TEST(ChainResumeEdgesTest, resumeTest2) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::SUCCEEDED;
   proc->rcProcessLocal = nebula::cpp2::ErrorCode::SUCCEEDED;
 
   LOG(INFO) << "Build AddEdgesRequest...";
-  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, 1);
+  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, mockPartNum);
+
+  UPCLT iClient(FakeInternalStorageClient::instance(env, Code::E_UNKNOWN));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
   LOG(INFO) << "Test AddEdgesProcessor...";
   auto fut = proc->getFuture();
@@ -114,10 +118,12 @@ TEST(ChainResumeEdgesTest, resumeTest2) {
   EXPECT_EQ(334, numOfKey(req, util.genPrime, env));
   EXPECT_EQ(0, numOfKey(req, util.genDoublePrime, env));
 
-  auto* iClient = FakeInternalStorageClient::instance(env, nebula::cpp2::ErrorCode::E_UNKNOWN);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  for (int32_t i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_EQ(0, numOfKey(req, util.genKey, env));
   EXPECT_EQ(334, numOfKey(req, util.genPrime, env));
@@ -125,23 +131,23 @@ TEST(ChainResumeEdgesTest, resumeTest2) {
 }
 
 /**
- * @brief resumePrimeTest3 (resume insert prime outdated)
+ * @brief resumeTest3 (resume insert prime outdated)
  */
-TEST(ChainResumeEdgesTest, resumePrimeTest3) {
+TEST(ChainResumeEdgesTest, resumeTest3) {
   fs::TempDir rootPath("/tmp/AddEdgesTest.XXXXXX");
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::SUCCEEDED;
   proc->rcProcessLocal = nebula::cpp2::ErrorCode::SUCCEEDED;
 
   LOG(INFO) << "Build AddEdgesRequest...";
-  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, 1);
+  cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, mockPartNum);
 
   LOG(INFO) << "Test AddEdgesProcessor...";
   auto fut = proc->getFuture();
@@ -155,11 +161,16 @@ TEST(ChainResumeEdgesTest, resumePrimeTest3) {
   EXPECT_EQ(0, numOfKey(req, util.genDoublePrime, env));
 
   auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
-  auto* iClient = FakeInternalStorageClient::instance(env, error);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  env->txnMan_->scanPrimes(1, 1);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
+  for (auto i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   // none of really edge key should be inserted
   EXPECT_EQ(334, numOfKey(req, util.genKey, env));
@@ -181,10 +192,10 @@ TEST(ChainResumeEdgesTest, resumeTest4) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
 
@@ -192,22 +203,22 @@ TEST(ChainResumeEdgesTest, resumeTest4) {
   int partNum = 1;
   cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, partNum);
 
+  auto error = nebula::cpp2::ErrorCode::E_UNKNOWN;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
   LOG(INFO) << "Test AddEdgesProcessor...";
   auto fut = proc->getFuture();
   proc->process(req);
   auto resp = std::move(fut).get();
   EXPECT_EQ(0, resp.result.failed_parts.size());
 
-  // ChainTestUtils util;
   EXPECT_EQ(334, numOfKey(req, gTestUtil.genKey, env));
   EXPECT_EQ(0, numOfKey(req, gTestUtil.genPrime, env));
   EXPECT_EQ(334, numOfKey(req, gTestUtil.genDoublePrime, env));
 
-  auto error = nebula::cpp2::ErrorCode::E_UNKNOWN;
-  auto* iClient = FakeInternalStorageClient::instance(env, error);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_EQ(334, numOfKey(req, gTestUtil.genKey, env));
   EXPECT_EQ(0, numOfKey(req, gTestUtil.genPrime, env));
@@ -222,12 +233,16 @@ TEST(ChainResumeEdgesTest, resumeTest5) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
+
+  auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
   LOG(INFO) << "Build AddEdgesRequest...";
   cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, 1);
@@ -238,16 +253,13 @@ TEST(ChainResumeEdgesTest, resumeTest5) {
   auto resp = std::move(fut).get();
   EXPECT_EQ(0, resp.result.failed_parts.size());
 
+  env->txnMan_->stop();
+  env->txnMan_->join();
+
   ChainTestUtils util;
   EXPECT_EQ(334, numOfKey(req, util.genKey, env));
   EXPECT_EQ(0, numOfKey(req, util.genPrime, env));
   EXPECT_EQ(334, numOfKey(req, util.genDoublePrime, env));
-
-  auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
-  auto* iClient = FakeInternalStorageClient::instance(env, error);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
 
   EXPECT_EQ(334, numOfKey(req, util.genKey, env));
   EXPECT_EQ(0, numOfKey(req, util.genPrime, env));
@@ -262,15 +274,18 @@ TEST(ChainResumeEdgesTest, resumeTest6) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
 
   env->metaClient_ = mClient.get();
-  auto* proc = new FakeChainAddEdgesProcessorLocal(env);
+  auto* proc = new FakeChainAddEdgesLocalProcessor(env);
 
   proc->rcProcessRemote = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
 
   LOG(INFO) << "Build AddEdgesRequest...";
   cpp2::AddEdgesRequest req = mock::MockData::mockAddEdgesReq(false, 1);
+
+  UPCLT iClient(FakeInternalStorageClient::instance(env));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
   LOG(INFO) << "Test AddEdgesProcessor...";
   auto fut = proc->getFuture();
@@ -283,11 +298,12 @@ TEST(ChainResumeEdgesTest, resumeTest6) {
   EXPECT_EQ(0, numOfKey(req, util.genPrime, env));
   EXPECT_EQ(334, numOfKey(req, util.genDoublePrime, env));
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  env->txnMan_->scanPrimes(1, 1);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  for (auto i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_EQ(334, numOfKey(req, util.genKey, env));
   EXPECT_EQ(0, numOfKey(req, util.genPrime, env));
@@ -300,10 +316,12 @@ TEST(ChainUpdateEdgeTest, resumeTest7) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  // auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
+  LOG(INFO) << "total parts: " << parts;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
@@ -318,17 +336,20 @@ TEST(ChainUpdateEdgeTest, resumeTest7) {
   LOG(INFO) << "addUnfinishedEdge()";
   proc->wrapAddUnfinishedEdge(ResumeType::RESUME_CHAIN);
   auto resp = std::move(f).get();
+  UPCLT iClient(FakeInternalStorageClient::instance(env));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
   EXPECT_FALSE(helper.checkRequestUpdated(env, req));
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_TRUE(helper.primeExist(env, req));
   EXPECT_FALSE(helper.doublePrimeExist(env, req));
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  env->txnMan_->scanPrimes(1, 1);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  for (auto i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_FALSE(helper.primeExist(env, req));
@@ -341,10 +362,11 @@ TEST(ChainUpdateEdgeTest, resumeTest8) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  // auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
@@ -358,17 +380,21 @@ TEST(ChainUpdateEdgeTest, resumeTest8) {
   proc->process(req);
   auto resp = std::move(f).get();
 
-  // EXPECT_TRUE(helper.checkResp(req, resp));
+  auto error = nebula::cpp2::ErrorCode::E_UNKNOWN;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
+  for (auto i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
+
   EXPECT_FALSE(helper.checkRequestUpdated(env, req));
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_TRUE(helper.primeExist(env, req));
   EXPECT_FALSE(helper.doublePrimeExist(env, req));
-
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  iClient->setErrorCode(Code::E_UNKNOWN);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_TRUE(helper.primeExist(env, req));
@@ -381,10 +407,11 @@ TEST(ChainUpdateEdgeTest, resumeTest9) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  // auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
@@ -399,17 +426,16 @@ TEST(ChainUpdateEdgeTest, resumeTest9) {
   proc->wrapAddUnfinishedEdge(ResumeType::RESUME_CHAIN);
   auto resp = std::move(f).get();
 
-  // EXPECT_TRUE(helper.checkResp(req, resp));
-  EXPECT_FALSE(helper.checkRequestUpdated(env, req));
-  EXPECT_TRUE(helper.edgeExist(env, req));
-  EXPECT_TRUE(helper.primeExist(env, req));
-  EXPECT_FALSE(helper.doublePrimeExist(env, req));
+  auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  iClient->setErrorCode(Code::E_RPC_FAILURE);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  for (auto i = 1; i <= mockPartNum; ++i) {
+    env->txnMan_->scanPrimes(1, i);
+  }
+
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_FALSE(helper.primeExist(env, req));
@@ -422,20 +448,22 @@ TEST(ChainUpdateEdgeTest, resumeTest10) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
   auto req = helper.makeDefaultRequest();
 
+  UPCLT iClient(FakeInternalStorageClient::instance(env));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
   LOG(INFO) << "Fake Prime...";
   auto* proc = new FakeChainUpdateProcessor(env);
   auto f = proc->getFuture();
   proc->rcProcessRemote = Code::E_RPC_FAILURE;
-  // proc->rcProcessLocal = Code::SUCCEEDED;
   proc->process(req);
   auto resp = std::move(f).get();
 
@@ -444,10 +472,8 @@ TEST(ChainUpdateEdgeTest, resumeTest10) {
   EXPECT_FALSE(helper.primeExist(env, req));
   EXPECT_TRUE(helper.doublePrimeExist(env, req));
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_FALSE(helper.primeExist(env, req));
@@ -460,20 +486,24 @@ TEST(ChainUpdateEdgeTest, resumeTest11) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  // auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
   auto req = helper.makeDefaultRequest();
 
+  auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
   LOG(INFO) << "Fake Prime...";
   auto* proc = new FakeChainUpdateProcessor(env);
   auto f = proc->getFuture();
   proc->rcProcessRemote = Code::E_RPC_FAILURE;
-  // proc->rcProcessLocal = Code::SUCCEEDED;
   proc->process(req);
   auto resp = std::move(f).get();
 
@@ -482,11 +512,8 @@ TEST(ChainUpdateEdgeTest, resumeTest11) {
   EXPECT_FALSE(helper.primeExist(env, req));
   EXPECT_TRUE(helper.doublePrimeExist(env, req));
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  iClient->setErrorCode(Code::E_UNKNOWN);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_FALSE(helper.primeExist(env, req));
@@ -499,20 +526,24 @@ TEST(ChainUpdateEdgeTest, resumeTest12) {
   mock::MockCluster cluster;
   cluster.initStorageKV(rootPath.path());
   auto* env = cluster.storageEnv_.get();
-  auto mClient = MetaClientTestUpdater::makeDefaultMetaClient();
+  auto mClient = MetaClientTestUpdater::makeDefault();
   env->metaClient_ = mClient.get();
 
-  auto parts = cluster.getTotalParts();
+  // auto parts = cluster.getTotalParts();
+  auto parts = mockPartNum;
   EXPECT_TRUE(QueryTestUtils::mockEdgeData(env, parts, mockSpaceVidLen));
 
   LOG(INFO) << "Test UpdateEdgeRequest...";
   auto req = helper.makeDefaultRequest();
 
+  auto error = nebula::cpp2::ErrorCode::E_RPC_FAILURE;
+  UPCLT iClient(FakeInternalStorageClient::instance(env, error));
+  FakeInternalStorageClient::hookInternalStorageClient(env, iClient.get());
+
   LOG(INFO) << "Fake Prime...";
   auto* proc = new FakeChainUpdateProcessor(env);
   auto f = proc->getFuture();
   proc->rcProcessRemote = Code::E_RPC_FAILURE;
-  // proc->rcProcessLocal = Code::SUCCEEDED;
   proc->process(req);
   auto resp = std::move(f).get();
 
@@ -521,11 +552,8 @@ TEST(ChainUpdateEdgeTest, resumeTest12) {
   EXPECT_FALSE(helper.primeExist(env, req));
   EXPECT_TRUE(helper.doublePrimeExist(env, req));
 
-  auto* iClient = FakeInternalStorageClient::instance(env);
-  iClient->setErrorCode(Code::E_RPC_FAILURE);
-  FakeInternalStorageClient::hookInternalStorageClient(env, iClient);
-  ChainResumeProcessor resumeProc(env);
-  resumeProc.process();
+  env->txnMan_->stop();
+  env->txnMan_->join();
 
   EXPECT_TRUE(helper.edgeExist(env, req));
   EXPECT_FALSE(helper.primeExist(env, req));
@@ -535,6 +563,8 @@ TEST(ChainUpdateEdgeTest, resumeTest12) {
 }  // namespace nebula
 
 int main(int argc, char** argv) {
+  FLAGS_trace_toss = true;
+  FLAGS_v = 1;
   testing::InitGoogleTest(&argc, argv);
   folly::init(&argc, &argv, false);
   google::SetStderrLogging(google::INFO);

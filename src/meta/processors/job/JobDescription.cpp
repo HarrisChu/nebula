@@ -10,8 +10,8 @@
 #include <boost/stacktrace.hpp>
 #include <stdexcept>
 
+#include "common/utils/MetaKeyUtils.h"
 #include "kvstore/KVIterator.h"
-#include "meta/common/MetaCommon.h"
 #include "meta/processors/Common.h"
 #include "meta/processors/job/JobUtils.h"
 
@@ -19,19 +19,19 @@ namespace nebula {
 namespace meta {
 
 using Status = cpp2::JobStatus;
-using AdminCmd = cpp2::AdminCmd;
+using JobType = cpp2::JobType;
 
 int32_t JobDescription::minDataVer_ = 1;
 int32_t JobDescription::currDataVer_ = 1;
 
 JobDescription::JobDescription(JobID id,
-                               cpp2::AdminCmd cmd,
+                               cpp2::JobType type,
                                std::vector<std::string> paras,
                                Status status,
                                int64_t startTime,
                                int64_t stopTime)
     : id_(id),
-      cmd_(cmd),
+      type_(type),
       paras_(std::move(paras)),
       status_(status),
       startTime_(startTime),
@@ -46,12 +46,12 @@ ErrorOr<nebula::cpp2::ErrorCode, JobDescription> JobDescription::makeJobDescript
     auto key = parseKey(rawkey);
 
     if (!isSupportedValue(rawval)) {
-      LOG(ERROR) << "not supported data ver of job " << key;
+      LOG(INFO) << "not supported data ver of job " << key;
       return nebula::cpp2::ErrorCode::E_INVALID_JOB;
     }
     auto tup = parseVal(rawval);
 
-    auto cmd = std::get<0>(tup);
+    auto type = std::get<0>(tup);
     auto paras = std::get<1>(tup);
     for (auto p : paras) {
       LOG(INFO) << "p = " << p;
@@ -59,14 +59,16 @@ ErrorOr<nebula::cpp2::ErrorCode, JobDescription> JobDescription::makeJobDescript
     auto status = std::get<2>(tup);
     auto startTime = std::get<3>(tup);
     auto stopTime = std::get<4>(tup);
-    return JobDescription(key, cmd, paras, status, startTime, stopTime);
+    return JobDescription(key, type, paras, status, startTime, stopTime);
   } catch (std::exception& ex) {
-    LOG(ERROR) << ex.what();
+    LOG(INFO) << ex.what();
   }
   return nebula::cpp2::ErrorCode::E_INVALID_JOB;
 }
 
-std::string JobDescription::jobKey() const { return makeJobKey(id_); }
+std::string JobDescription::jobKey() const {
+  return makeJobKey(id_);
+}
 
 std::string JobDescription::makeJobKey(JobID iJob) {
   std::string str;
@@ -88,7 +90,7 @@ std::string JobDescription::jobVal() const {
   // use a big num to avoid possible conflict
   int32_t dataVersion = INT_MAX - currDataVer_;
   str.append(reinterpret_cast<const char*>(&dataVersion), sizeof(dataVersion))
-      .append(reinterpret_cast<const char*>(&cmd_), sizeof(cmd_));
+      .append(reinterpret_cast<const char*>(&type_), sizeof(type_));
   auto paraSize = paras_.size();
   str.append(reinterpret_cast<const char*>(&paraSize), sizeof(size_t));
   for (auto& para : paras_) {
@@ -102,19 +104,19 @@ std::string JobDescription::jobVal() const {
   return str;
 }
 
-std::tuple<AdminCmd, std::vector<std::string>, Status, int64_t, int64_t> JobDescription::parseVal(
+std::tuple<JobType, std::vector<std::string>, Status, int64_t, int64_t> JobDescription::parseVal(
     const folly::StringPiece& rawVal) {
   return decodeValV1(rawVal);
 }
 
 // old saved data may have different format
 // which means we have different decoder for each version
-std::tuple<AdminCmd, std::vector<std::string>, Status, int64_t, int64_t>
-JobDescription::decodeValV1(const folly::StringPiece& rawVal) {
+std::tuple<JobType, std::vector<std::string>, Status, int64_t, int64_t> JobDescription::decodeValV1(
+    const folly::StringPiece& rawVal) {
   size_t offset = sizeof(int32_t);
 
-  auto cmd = JobUtil::parseFixedVal<AdminCmd>(rawVal, offset);
-  offset += sizeof(cmd);
+  auto type = JobUtil::parseFixedVal<JobType>(rawVal, offset);
+  offset += sizeof(type);
 
   std::vector<std::string> paras = JobUtil::parseStrVector(rawVal, &offset);
 
@@ -126,17 +128,17 @@ JobDescription::decodeValV1(const folly::StringPiece& rawVal) {
 
   auto tStop = JobUtil::parseFixedVal<int64_t>(rawVal, offset);
 
-  return std::make_tuple(cmd, paras, status, tStart, tStop);
+  return std::make_tuple(type, paras, status, tStart, tStop);
 }
 
 cpp2::JobDesc JobDescription::toJobDesc() {
   cpp2::JobDesc ret;
-  ret.set_id(id_);
-  ret.set_cmd(cmd_);
-  ret.set_paras(paras_);
-  ret.set_status(status_);
-  ret.set_start_time(startTime_);
-  ret.set_stop_time(stopTime_);
+  ret.id_ref() = id_;
+  ret.type_ref() = type_;
+  ret.paras_ref() = paras_;
+  ret.status_ref() = status_;
+  ret.start_time_ref() = startTime_;
+  ret.stop_time_ref() = stopTime_;
   return ret;
 }
 
@@ -176,7 +178,7 @@ ErrorOr<nebula::cpp2::ErrorCode, JobDescription> JobDescription::loadJobDescript
   std::string val;
   auto retCode = kv->get(kDefaultSpaceId, kDefaultPartId, key, &val);
   if (retCode != nebula::cpp2::ErrorCode::SUCCEEDED) {
-    LOG(ERROR) << "Loading Job Description Failed" << apache::thrift::util::enumNameSafe(retCode);
+    LOG(INFO) << "Loading Job Description Failed" << apache::thrift::util::enumNameSafe(retCode);
     return retCode;
   }
   return makeJobDescription(key, val);

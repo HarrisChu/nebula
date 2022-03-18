@@ -10,8 +10,8 @@ namespace graph {
 
 /**
  * Read space : kUse, kDescribeSpace
- * Write space : kCreateSpace, kDropSpace, kCreateSnapshot, kDropSnapshot
- *               kBalance, kAdmin, kConfig, kIngest, kDownload
+ * Write space : kCreateSpace, kDropSpace, kClearSpace, kCreateSnapshot,
+ *               kDropSnapshot, kBalance, kAdmin, kConfig, kIngest, kDownload
  * Read schema : kDescribeTag, kDescribeEdge,
  *               kDescribeTagIndex, kDescribeEdgeIndex
  * Write schema : kCreateTag, kAlterTag, kCreateEdge,
@@ -28,11 +28,10 @@ namespace graph {
  * Special operation : kShow, kChangePassword
  */
 
-// static
-Status PermissionCheck::permissionCheck(ClientSession *session,
-                                        Sentence *sentence,
-                                        ValidateContext *vctx,
-                                        GraphSpaceID targetSpace) {
+/* static */ Status PermissionCheck::permissionCheck(ClientSession *session,
+                                                     Sentence *sentence,
+                                                     ValidateContext *vctx,
+                                                     GraphSpaceID targetSpace) {
   if (!FLAGS_enable_authorize) {
     return Status::OK();
   }
@@ -51,8 +50,10 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
       return Status::OK();
     }
     case Sentence::Kind::kCreateSpace:
+    case Sentence::Kind::kAlterSpace:
     case Sentence::Kind::kCreateSpaceAs:
     case Sentence::Kind::kDropSpace:
+    case Sentence::Kind::kClearSpace:
     case Sentence::Kind::kCreateSnapshot:
     case Sentence::Kind::kDropSnapshot:
     case Sentence::Kind::kAddHosts:
@@ -60,7 +61,7 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
     case Sentence::Kind::kMergeZone:
     case Sentence::Kind::kRenameZone:
     case Sentence::Kind::kDropZone:
-    case Sentence::Kind::kSplitZone:
+    case Sentence::Kind::kDivideZone:
     case Sentence::Kind::kDescribeZone:
     case Sentence::Kind::kListZones:
     case Sentence::Kind::kAddHostsIntoZone:
@@ -69,8 +70,8 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
     case Sentence::Kind::kGetConfig:
     case Sentence::Kind::kIngest:
     case Sentence::Kind::kDownload:
-    case Sentence::Kind::kSignOutTSService:
-    case Sentence::Kind::kSignInTSService: {
+    case Sentence::Kind::kSignOutService:
+    case Sentence::Kind::kSignInService: {
       return PermissionManager::canWriteSpace(session);
     }
     case Sentence::Kind::kCreateTag:
@@ -164,7 +165,7 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
     case Sentence::Kind::kShowMetaLeader:
     case Sentence::Kind::kShowHosts: {
       /**
-       * all roles can be show for above operations.
+       * All roles can be show for above operations.
        */
       return Status::OK();
     }
@@ -183,7 +184,7 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
     case Sentence::Kind::kDescribeUser:
     case Sentence::Kind::kShowUsers:
     case Sentence::Kind::kShowSnapshots:
-    case Sentence::Kind::kShowTSClients:
+    case Sentence::Kind::kShowServiceClients:
     case Sentence::Kind::kShowSessions: {
       /**
        * Only GOD role can be show.
@@ -191,7 +192,7 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
       if (session->isGod()) {
         return Status::OK();
       } else {
-        return Status::PermissionError("No permission to show users/snapshots/textClients");
+        return Status::PermissionError("No permission to show users/snapshots/serviceClients");
       }
     }
     case Sentence::Kind::kChangePassword: {
@@ -205,14 +206,16 @@ Status PermissionCheck::permissionCheck(ClientSession *session,
       return Status::OK();
     }
     case Sentence::Kind::kExplain:
-      // everyone could explain
+      // Everyone could explain
       return Status::OK();
     case Sentence::Kind::kSequential: {
       // No permission checking for sequential sentence.
       return Status::OK();
     }
-    case Sentence::Kind::kShowQueries:
-    case Sentence::Kind::kKillQuery: {
+    case Sentence::Kind::kKillQuery:
+      // Only GOD could kill all queries, other roles only could kill own queries.
+      return Status::OK();
+    case Sentence::Kind::kShowQueries: {
       return Status::OK();
     }
   }

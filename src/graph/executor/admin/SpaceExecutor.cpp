@@ -5,10 +5,12 @@
 
 #include "graph/executor/admin/SpaceExecutor.h"
 
+#include "common/stats/StatsManager.h"
 #include "common/time/ScopedTimer.h"
 #include "graph/context/QueryContext.h"
 #include "graph/planner/plan/Admin.h"
 #include "graph/service/PermissionManager.h"
+#include "graph/stats/GraphStats.h"
 #include "graph/util/FTIndexUtils.h"
 #include "graph/util/SchemaUtil.h"
 
@@ -140,6 +142,7 @@ folly::Future<Status> DropSpaceExecutor::execute() {
           LOG(ERROR) << "Drop space `" << dsNode->getSpaceName() << "' failed: " << resp.status();
           return resp.status();
         }
+        unRegisterSpaceLevelMetrics(dsNode->getSpaceName());
         if (dsNode->getSpaceName() == qctx()->rctx()->session()->space().name) {
           SpaceInfo spaceInfo;
           spaceInfo.name = "";
@@ -156,6 +159,60 @@ folly::Future<Status> DropSpaceExecutor::execute() {
             auto ftRet = FTIndexUtils::dropTSIndex(std::move(tsRet).value(), ftindex);
             if (!ftRet.ok()) {
               LOG(WARNING) << "Drop fulltext index `" << ftindex << "' failed: " << ftRet.status();
+            }
+          }
+        }
+        return Status::OK();
+      });
+}
+
+void DropSpaceExecutor::unRegisterSpaceLevelMetrics(const std::string &spaceName) {
+  if (FLAGS_enable_space_level_metrics && spaceName != "") {
+    stats::StatsManager::removeCounterWithLabels(kNumQueries, {{"space", spaceName}});
+    stats::StatsManager::removeCounterWithLabels(kNumSlowQueries, {{"space", spaceName}});
+    stats::StatsManager::removeCounterWithLabels(kNumQueryErrors, {{"space", spaceName}});
+    stats::StatsManager::removeHistoWithLabels(kQueryLatencyUs, {{"space", spaceName}});
+    stats::StatsManager::removeHistoWithLabels(kSlowQueryLatencyUs, {{"space", spaceName}});
+  }
+}
+
+folly::Future<Status> ClearSpaceExecutor::execute() {
+  SCOPED_TIMER(&execTime_);
+
+  auto *csNode = asNode<ClearSpace>(node());
+
+  // prepare text search index.
+  std::vector<std::string> ftIndexes;
+  auto spaceIdRet = qctx()->getMetaClient()->getSpaceIdByNameFromCache(csNode->getSpaceName());
+  if (spaceIdRet.ok()) {
+    auto ftIndexesRet = qctx()->getMetaClient()->getFTIndexBySpaceFromCache(spaceIdRet.value());
+    NG_RETURN_IF_ERROR(ftIndexesRet);
+    auto map = std::move(ftIndexesRet).value();
+    auto get = [](const auto &ptr) { return ptr.first; };
+    std::transform(map.begin(), map.end(), std::back_inserter(ftIndexes), get);
+  } else {
+    LOG(WARNING) << "Get space ID failed when prepare text index: " << csNode->getSpaceName();
+  }
+
+  return qctx()
+      ->getMetaClient()
+      ->clearSpace(csNode->getSpaceName(), csNode->getIfExists())
+      .via(runner())
+      .thenValue([this, csNode, spaceIdRet, ftIndexes = std::move(ftIndexes)](StatusOr<bool> resp) {
+        if (!resp.ok()) {
+          LOG(ERROR) << "Clear space `" << csNode->getSpaceName() << "' failed: " << resp.status();
+          return resp.status();
+        }
+        if (!ftIndexes.empty()) {
+          auto tsRet = FTIndexUtils::getTSClients(qctx()->getMetaClient());
+          if (!tsRet.ok()) {
+            LOG(WARNING) << "Get text search clients failed";
+            return Status::OK();
+          }
+          for (const auto &ftindex : ftIndexes) {
+            auto ftRet = FTIndexUtils::clearTSIndex(std::move(tsRet).value(), ftindex);
+            if (!ftRet.ok()) {
+              LOG(WARNING) << "Clear fulltext index `" << ftindex << "' failed: " << ftRet.status();
             }
           }
         }
@@ -255,6 +312,23 @@ folly::Future<Status> ShowCreateSpaceExecutor::execute() {
                           .value(Value(std::move(dataSet)))
                           .iter(Iterator::Kind::kDefault)
                           .build());
+      });
+}
+
+folly::Future<Status> AlterSpaceExecutor::execute() {
+  SCOPED_TIMER(&execTime_);
+  auto *asnode = asNode<AlterSpace>(node());
+  return qctx()
+      ->getMetaClient()
+      ->alterSpace(asnode->getSpaceName(), asnode->getAlterSpaceOp(), asnode->getParas())
+      .via(runner())
+      .thenValue([this](StatusOr<bool> &&resp) {
+        SCOPED_TIMER(&execTime_);
+        if (!resp.ok()) {
+          LOG(ERROR) << resp.status().toString();
+          return std::move(resp).status();
+        }
+        return Status::OK();
       });
 }
 }  // namespace graph

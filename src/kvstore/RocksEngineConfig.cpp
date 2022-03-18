@@ -50,6 +50,10 @@ DEFINE_int64(rocksdb_block_cache,
              1024,
              "The default block cache size used in BlockBasedTable. The unit is MB");
 
+DEFINE_bool(disable_page_cache,
+            false,
+            "Disable page cache to better control memory used by rocksdb.");
+
 DEFINE_int32(rocksdb_row_cache_num, 16 * 1000 * 1000, "Total keys inside the cache");
 
 DEFINE_int32(cache_bucket_exp, 8, "Total buckets number is 1 << cache_bucket_exp");
@@ -59,7 +63,13 @@ DEFINE_bool(enable_partitioned_index_filter, false, "True for partitioned index 
 DEFINE_string(rocksdb_compression,
               "snappy",
               "Compression algorithm used by RocksDB, "
-              "options: no,snappy,lz4,lz4hc,zstd,zlib,bzip2");
+              "options: no, snappy, lz4, lz4hc, zstd, zlib, bzip2, xpress");
+
+DEFINE_string(rocksdb_bottommost_compression,
+              "disable",
+              "Specify the bottommost level compression algorithm"
+              "options: no, snappy, lz4, lz4hc, zstd, zlib, bzip2, xpress, disable");
+
 DEFINE_string(rocksdb_compression_per_level,
               "",
               "Specify per level compression algorithm, "
@@ -117,9 +127,9 @@ DEFINE_bool(rocksdb_enable_kv_separation,
             "Whether or not to enable BlobDB (RocksDB key-value separation support)");
 
 DEFINE_uint64(rocksdb_kv_separation_threshold,
-              0,
-              "RocksDB key value separation threshold. Values at or above this threshold will be "
-              "written to blob files during flush or compaction."
+              100,
+              "RocksDB key value separation threshold in bytes. Values at or above this threshold "
+              "will be written to blob files during flush or compaction."
               "This value is only effective when enable_kv_separation is true.");
 
 DEFINE_string(rocksdb_blob_compression,
@@ -142,7 +152,9 @@ static const std::unordered_map<std::string, rocksdb::CompressionType> kCompress
     {"lz4hc", rocksdb::kLZ4HCCompression},
     {"zstd", rocksdb::kZSTD},
     {"zlib", rocksdb::kZlibCompression},
-    {"bzip2", rocksdb::kBZip2Compression}};
+    {"bzip2", rocksdb::kBZip2Compression},
+    {"xpress", rocksdb::kXpressCompression},
+    {"disable", rocksdb::kDisableCompressionOption}};
 
 static rocksdb::Status initRocksdbCompression(rocksdb::Options& baseOpts) {
   // Set the general compression algorithm
@@ -153,6 +165,13 @@ static rocksdb::Status initRocksdbCompression(rocksdb::Options& baseOpts) {
       return rocksdb::Status::InvalidArgument();
     }
     baseOpts.compression = it->second;
+
+    it = kCompressionTypeMap.find(FLAGS_rocksdb_bottommost_compression);
+    if (it == kCompressionTypeMap.end()) {
+      LOG(ERROR) << "Unsupported compression type: " << FLAGS_rocksdb_bottommost_compression;
+      return rocksdb::Status::InvalidArgument();
+    }
+    baseOpts.bottommost_compression = it->second;
   }
   if (FLAGS_rocksdb_compression_per_level.empty()) {
     return rocksdb::Status::OK();
@@ -256,6 +275,10 @@ rocksdb::Status initRocksdbOptions(rocksdb::Options& baseOpts,
   s = initRocksdbKVSeparation(baseOpts);
   if (!s.ok()) {
     return s;
+  }
+
+  if (FLAGS_disable_page_cache) {
+    baseOpts.use_direct_reads = true;
   }
 
   if (FLAGS_num_compaction_threads > 0) {

@@ -51,9 +51,13 @@ struct HookableTask : public AdminTask {
     subTasks.emplace_back(subTask);
   }
 
-  void setJobId(int id) { ctx_.jobId_ = id; }
+  void setJobId(int id) {
+    ctx_.jobId_ = id;
+  }
 
-  void setTaskId(int id) { ctx_.taskId_ = id; }
+  void setTaskId(int id) {
+    ctx_.taskId_ = id;
+  }
 
   std::function<ErrOrSubTasks()> fGenSubTasks;
   std::vector<AdminSubTask> subTasks;
@@ -124,7 +128,7 @@ TEST(TaskManagerTest, component_IOThreadPool) {
 
   {
     int totalTask = 100;
-    using Para = folly::Optional<std::thread::id>;
+    using Para = std::optional<std::thread::id>;
     std::mutex mu;
     int completed = 0;
     auto pool = std::make_unique<ThreadPool>(numThreads);
@@ -146,7 +150,7 @@ TEST(TaskManagerTest, component_IOThreadPool) {
     };
 
     for (int i = 0; i < totalTask; ++i) {
-      pool->add(std::bind(f, folly::none));
+      pool->add(std::bind(f, std::nullopt));
     }
     pool->join();
 

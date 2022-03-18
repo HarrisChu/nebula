@@ -2,7 +2,8 @@
  *
  * This source code is licensed under Apache 2.0 License.
  */
-#pragma once
+#ifndef STORAGE_EXEC_INDEXLIMITNODE_H
+#define STORAGE_EXEC_INDEXLIMITNODE_H
 #include "folly/Likely.h"
 #include "storage/exec/IndexNode.h"
 namespace nebula {
@@ -15,12 +16,15 @@ class IndexLimitNode : public IndexNode {
   std::unique_ptr<IndexNode> copy() override;
   std::string identify() override;
 
+ protected:
+  const uint64_t offset_, limit_;
+
  private:
   nebula::cpp2::ErrorCode doExecute(PartitionID partId) override;
   Result doNext() override;
-  const uint64_t offset_, limit_;
   uint64_t currentOffset_ = 0;
 };
 }  // namespace storage
 
 }  // namespace nebula
+#endif

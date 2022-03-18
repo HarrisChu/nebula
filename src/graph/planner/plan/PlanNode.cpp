@@ -13,6 +13,7 @@
 
 #include "common/graph/Response.h"
 #include "graph/context/QueryContext.h"
+#include "graph/planner/plan/PlanNodeVisitor.h"
 #include "graph/util/ToJson.h"
 
 namespace nebula {
@@ -168,12 +169,16 @@ const char* PlanNode::toString(PlanNode::Kind kind) {
       return "ShowCreateEdgeIndex";
     case Kind::kDropSpace:
       return "DropSpace";
+    case Kind::kClearSpace:
+      return "ClearSpace";
     case Kind::kDropTag:
       return "DropTag";
     case Kind::kDropEdge:
       return "DropEdge";
     case Kind::kShowSpaces:
       return "ShowSpaces";
+    case Kind::kAlterSpace:
+      return "AlterSpaces";
     case Kind::kShowTags:
       return "ShowTags";
     case Kind::kShowEdges:
@@ -247,8 +252,8 @@ const char* PlanNode::toString(PlanNode::Kind kind) {
       return "RenameZone";
     case Kind::kDropZone:
       return "DropZone";
-    case Kind::kSplitZone:
-      return "SplitZone";
+    case Kind::kDivideZone:
+      return "DivideZone";
     case Kind::kDescribeZone:
       return "DescribeZone";
     case Kind::kAddHostsIntoZone:
@@ -263,15 +268,15 @@ const char* PlanNode::toString(PlanNode::Kind kind) {
       return "ShowListener";
     case Kind::kShowStats:
       return "ShowStats";
-    // text search
-    case Kind::kShowTSClients:
-      return "ShowTSClients";
+    // service search
+    case Kind::kShowServiceClients:
+      return "ShowServiceClients";
     case Kind::kShowFTIndexes:
       return "ShowFTIndexes";
-    case Kind::kSignInTSService:
-      return "SignInTSService";
-    case Kind::kSignOutTSService:
-      return "SignOutTSService";
+    case Kind::kSignInService:
+      return "SignInService";
+    case Kind::kSignOutService:
+      return "SignOutService";
     case Kind::kDownload:
       return "Download";
     case Kind::kIngest:
@@ -288,6 +293,14 @@ const char* PlanNode::toString(PlanNode::Kind kind) {
       return "Traverse";
     case Kind::kAppendVertices:
       return "AppendVertices";
+    case Kind::kBiLeftJoin:
+      return "BiLeftJoin";
+    case Kind::kBiInnerJoin:
+      return "BiInnerJoin";
+    case Kind::kBiCartesianProduct:
+      return "BiCartesianProduct";
+    case Kind::kArgument:
+      return "Argument";
       // no default so the compiler will warning when lack
   }
   LOG(FATAL) << "Impossible kind plan node " << static_cast<int>(kind);
@@ -316,7 +329,9 @@ void PlanNode::readVariable(Variable* varPtr) {
   qctx_->symTable()->readBy(varPtr->name, this);
 }
 
-void PlanNode::calcCost() { VLOG(1) << "unimplemented cost calculation."; }
+void PlanNode::calcCost() {
+  VLOG(1) << "unimplemented cost calculation.";
+}
 
 void PlanNode::setOutputVar(const std::string& var) {
   DCHECK_EQ(1, outputVars_.size());
@@ -348,6 +363,10 @@ std::unique_ptr<PlanNodeDescription> PlanNode::explain() const {
   return desc;
 }
 
+void PlanNode::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
+}
+
 void PlanNode::releaseSymbols() {
   auto symTbl = qctx_->symTable();
   for (auto in : inputVars_) {
@@ -355,6 +374,15 @@ void PlanNode::releaseSymbols() {
   }
   for (auto out : outputVars_) {
     out && symTbl->deleteWrittenBy(out->name, this);
+  }
+}
+
+void PlanNode::updateSymbols() {
+  auto symTbl = qctx_->symTable();
+  for (auto out : outputVars_) {
+    if (out != nullptr) {
+      symTbl->updateWrittenBy(out->name, out->name, this);
+    }
   }
 }
 
@@ -415,5 +443,9 @@ std::unique_ptr<PlanNodeDescription> VariableDependencyNode::explain() const {
   return desc;
 }
 
+void PlanNode::setColNames(std::vector<std::string> cols) {
+  qctx_->symTable()->setAliasGeneratedBy(cols, outputVarPtr(0)->name);
+  outputVarPtr(0)->colNames = std::move(cols);
+}
 }  // namespace graph
 }  // namespace nebula

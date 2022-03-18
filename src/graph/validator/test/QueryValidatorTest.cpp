@@ -186,6 +186,23 @@ TEST_F(QueryValidatorTest, GoWithPipe) {
     EXPECT_TRUE(checkResult(query, expected));
   }
   {
+    std::string query = "YIELD \"1\" AS id | GO FROM $-.id OVER like YIELD id($$) as id";
+    std::vector<PlanNode::Kind> expected = {PK::kProject,
+                                            PK::kInnerJoin,
+                                            PK::kProject,
+                                            PK::kGetNeighbors,
+                                            PK::kDedup,
+                                            PK::kProject,
+                                            PK::kProject,
+                                            PK::kStart};
+    EXPECT_TRUE(checkResult(query, expected));
+  }
+  {
+    std::string query = "GO FROM 'Tim' OVER * YIELD id($$) as id";
+    std::vector<PlanNode::Kind> expected = {PK::kProject, PK::kGetNeighbors, PK::kStart};
+    EXPECT_TRUE(checkResult(query, expected));
+  }
+  {
     std::string query =
         "GO 1 STEPS FROM \"1\" OVER like YIELD like._dst AS "
         "id | GO 1 STEPS FROM $-.id OVER like YIELD $-.id, like._dst";
@@ -908,8 +925,9 @@ TEST_F(QueryValidatorTest, GoInvalid) {
     // yield agg without groupBy is not supported
     std::string query = "GO FROM \"2\" OVER like YIELD COUNT(123);";
     auto result = checkResult(query);
-    EXPECT_EQ(std::string(result.message()),
-              "SemanticError: `COUNT(123)' is not support in go sentence.");
+    EXPECT_EQ(
+        std::string(result.message()),
+        "SyntaxError: Invalid use of aggregating function in yield clause. near `COUNT(123)'");
   }
   {
     std::string query =
@@ -1175,7 +1193,7 @@ TEST_F(QueryValidatorTest, TestMatch) {
   {
     std::string query =
         "MATCH (v1:person{name: \"LeBron James\"}) -[r]-> (v2) "
-        "RETURN type(r) AS Type, v2.name AS Name";
+        "RETURN type(r) AS Type, v2.person.name AS Name";
     std::vector<PlanNode::Kind> expected = {
         PK::kProject,
         PK::kProject,
@@ -1189,7 +1207,7 @@ TEST_F(QueryValidatorTest, TestMatch) {
   {
     std::string query =
         "MATCH (:person{name:'Dwyane Wade'}) -[:like]-> () -[:like]-> (v3) "
-        "RETURN DISTINCT v3.name AS Name";
+        "RETURN DISTINCT v3.person.name AS Name";
     std::vector<PlanNode::Kind> expected = {
         PK::kDataCollect,
         PK::kDedup,
@@ -1207,7 +1225,7 @@ TEST_F(QueryValidatorTest, TestMatch) {
     std::string query =
         "MATCH (v1) -[r]-> (v2) "
         "WHERE id(v1) == \"LeBron James\""
-        "RETURN type(r) AS Type, v2.name AS Name";
+        "RETURN type(r) AS Type, v2.person.name AS Name";
     std::vector<PlanNode::Kind> expected = {
         PK::kProject,
         PK::kFilter,

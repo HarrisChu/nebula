@@ -21,7 +21,8 @@ nebula_add_library(
     admin/RebuildEdgeIndexTask.cpp
     admin/RebuildFTIndexTask.cpp
     admin/StatsTask.cpp
-    admin/ListClusterInfoProcessor.cpp
+    admin/GetLeaderProcessor.cpp
+    admin/ClearSpaceProcessor.cpp
 )
 
 nebula_add_library(
@@ -45,10 +46,12 @@ nebula_add_library(
     exec/IndexDedupNode.cpp
     exec/IndexEdgeScanNode.cpp
     exec/IndexLimitNode.cpp
+    exec/IndexAggregateNode.cpp
     exec/IndexProjectionNode.cpp
     exec/IndexScanNode.cpp
     exec/IndexSelectionNode.cpp
     exec/IndexVertexScanNode.cpp
+    exec/IndexTopNNode.cpp
     kv/PutProcessor.cpp
     kv/GetProcessor.cpp
     kv/RemoveProcessor.cpp
@@ -72,17 +75,21 @@ nebula_add_library(
     storage_transaction_executor OBJECT
     transaction/TransactionManager.cpp
     transaction/ConsistUtil.cpp
-    transaction/ChainUpdateEdgeProcessorLocal.cpp
-    transaction/ChainUpdateEdgeProcessorRemote.cpp
-    transaction/ChainResumeProcessor.cpp
+    transaction/ChainUpdateEdgeLocalProcessor.cpp
+    transaction/ChainUpdateEdgeRemoteProcessor.cpp
     transaction/ChainAddEdgesGroupProcessor.cpp
-    transaction/ChainAddEdgesProcessorLocal.cpp
-    transaction/ChainAddEdgesProcessorRemote.cpp
-    transaction/ResumeAddEdgeProcessor.cpp
-    transaction/ResumeAddEdgeRemoteProcessor.cpp
-    transaction/ResumeUpdateProcessor.cpp
-    transaction/ResumeUpdateRemoteProcessor.cpp
+    transaction/ChainAddEdgesLocalProcessor.cpp
+    transaction/ChainAddEdgesRemoteProcessor.cpp
+    transaction/ChainResumeAddPrimeProcessor.cpp
+    transaction/ChainResumeAddDoublePrimeProcessor.cpp
+    transaction/ChainResumeUpdatePrimeProcessor.cpp
+    transaction/ChainResumeUpdateDoublePrimeProcessor.cpp
     transaction/ChainProcessorFactory.cpp
+    transaction/ChainDeleteEdgesGroupProcessor.cpp
+    transaction/ChainDeleteEdgesLocalProcessor.cpp
+    transaction/ChainDeleteEdgesRemoteProcessor.cpp
+    transaction/ChainDeleteEdgesResumeProcessor.cpp
+    transaction/ChainDeleteEdgesResumeRemoteProcessor.cpp
 )
 
 nebula_add_library(
@@ -90,4 +97,11 @@ nebula_add_library(
     StorageServer.cpp
 )
 
+
+nebula_add_library(
+    storage_local_server_obj OBJECT
+    GraphStorageLocalServer.cpp
+)
+
+nebula_add_subdirectory(stats)
 nebula_add_subdirectory(test)

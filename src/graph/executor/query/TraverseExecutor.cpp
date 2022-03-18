@@ -62,7 +62,9 @@ Status TraverseExecutor::buildRequestDataSet() {
                    << ", space vid type: " << SchemaUtil::typeToString(vidType);
       continue;
     }
-    buildPath(prev, vid, iter->moveRow());
+    // Need copy here, Argument executor may depends on this variable.
+    auto prePath = *iter->row();
+    buildPath(prev, vid, std::move(prePath));
     if (!uniqueSet.emplace(vid).second) {
       continue;
     }
@@ -78,11 +80,10 @@ folly::Future<Status> TraverseExecutor::traverse() {
     DataSet emptyResult;
     return finish(ResultBuilder().value(Value(std::move(emptyResult))).build());
   }
-  getNeighbors();
-  return promise_.getFuture();
+  return getNeighbors();
 }
 
-void TraverseExecutor::getNeighbors() {
+folly::Future<Status> TraverseExecutor::getNeighbors() {
   currentStep_++;
   time::Duration getNbrTime;
   StorageClient* storageClient = qctx_->getStorageClient();
@@ -91,7 +92,7 @@ void TraverseExecutor::getNeighbors() {
                                           qctx()->rctx()->session()->id(),
                                           qctx()->plan()->id(),
                                           qctx()->plan()->isProfileEnabled());
-  storageClient
+  return storageClient
       ->getNeighbors(param,
                      reqDs_.colNames,
                      std::move(reqDs_.rows),
@@ -104,13 +105,13 @@ void TraverseExecutor::getNeighbors() {
                      finalStep ? traverse_->dedup() : false,
                      finalStep ? traverse_->random() : false,
                      finalStep ? traverse_->orderBy() : std::vector<storage::cpp2::OrderBy>(),
-                     finalStep ? traverse_->limit() : -1,
+                     finalStep ? traverse_->limit(qctx()) : -1,
                      finalStep ? traverse_->filter() : nullptr)
       .via(runner())
       .thenValue([this, getNbrTime](StorageRpcResponse<GetNeighborsResponse>&& resp) mutable {
         SCOPED_TIMER(&execTime_);
         addStats(resp, getNbrTime.elapsedInUSec());
-        handleResponse(resp);
+        return handleResponse(std::move(resp));
       });
 }
 
@@ -138,11 +139,10 @@ void TraverseExecutor::addStats(RpcResponse& resp, int64_t getNbrTimeInUSec) {
   otherStats_.emplace(folly::sformat("step {}", currentStep_), ss.str());
 }
 
-void TraverseExecutor::handleResponse(RpcResponse& resps) {
-  SCOPED_TIMER(&execTime_);
+folly::Future<Status> TraverseExecutor::handleResponse(RpcResponse&& resps) {
   auto result = handleCompleteness(resps, FLAGS_accept_partial_success);
   if (!result.ok()) {
-    promise_.setValue(std::move(result).status());
+    return folly::makeFuture<Status>(std::move(result).status());
   }
 
   auto& responses = resps.responses();
@@ -160,21 +160,20 @@ void TraverseExecutor::handleResponse(RpcResponse& resps) {
 
   auto status = buildInterimPath(iter.get());
   if (!status.ok()) {
-    promise_.setValue(status);
-    return;
+    return folly::makeFuture<Status>(std::move(status));
   }
   if (!isFinalStep()) {
     if (reqDs_.rows.empty()) {
       if (range_ != nullptr) {
-        promise_.setValue(buildResult());
+        return folly::makeFuture<Status>(buildResult());
       } else {
-        promise_.setValue(Status::OK());
+        return folly::makeFuture<Status>(Status::OK());
       }
     } else {
-      getNeighbors();
+      return getNeighbors();
     }
   } else {
-    promise_.setValue(buildResult());
+    return folly::makeFuture<Status>(buildResult());
   }
 }
 
@@ -234,8 +233,11 @@ Status TraverseExecutor::buildInterimPath(GetNeighborsIter* iter) {
       if (uniqueDst.emplace(dst).second) {
         reqDs.rows.emplace_back(Row({std::move(dst)}));
       }
-      auto path = prevPath;
       if (currentStep_ == 1) {
+        Row path;
+        if (traverse_->trackPrevPath()) {
+          path = prevPath;
+        }
         path.values.emplace_back(srcV);
         List neighbors;
         neighbors.values.emplace_back(e);
@@ -243,6 +245,7 @@ Status TraverseExecutor::buildInterimPath(GetNeighborsIter* iter) {
         buildPath(current, dst, std::move(path));
         ++count;
       } else {
+        auto path = prevPath;
         auto& eList = path.values.back().mutableList().values;
         eList.emplace_back(srcV);
         eList.emplace_back(e);
@@ -336,7 +339,11 @@ Status TraverseExecutor::handleZeroStep(const std::unordered_map<Value, Paths>& 
       return Status::Error("Can't find prev paths.");
     }
     const auto& paths = pathToSrcFound->second;
-    for (auto path : paths) {
+    for (auto& p : paths) {
+      Row path;
+      if (traverse_->trackPrevPath()) {
+        path = p;
+      }
       path.values.emplace_back(srcV);
       List neighbors;
       neighbors.values.emplace_back(srcV);

@@ -12,11 +12,17 @@ namespace meta {
 
 using nebula::cpp2::PropertyType;
 
-SchemaVer NebulaSchemaProvider::getVersion() const noexcept { return ver_; }
+SchemaVer NebulaSchemaProvider::getVersion() const noexcept {
+  return ver_;
+}
 
-size_t NebulaSchemaProvider::getNumFields() const noexcept { return fields_.size(); }
+size_t NebulaSchemaProvider::getNumFields() const noexcept {
+  return fields_.size();
+}
 
-size_t NebulaSchemaProvider::getNumNullableFields() const noexcept { return numNullableFields_; }
+size_t NebulaSchemaProvider::getNumNullableFields() const noexcept {
+  return numNullableFields_;
+}
 
 size_t NebulaSchemaProvider::size() const noexcept {
   if (fields_.size() > 0) {
@@ -92,7 +98,7 @@ void NebulaSchemaProvider::addField(folly::StringPiece name,
                                     PropertyType type,
                                     size_t fixedStrLen,
                                     bool nullable,
-                                    Expression* defaultValue,
+                                    std::string defaultValue,
                                     cpp2::GeoShape geoShape) {
   size_t size = fieldSize(type, fixedStrLen);
 
@@ -110,7 +116,7 @@ void NebulaSchemaProvider::addField(folly::StringPiece name,
   fields_.emplace_back(name.toString(),
                        type,
                        nullable,
-                       defaultValue != nullptr,
+                       defaultValue != "",
                        defaultValue,
                        size,
                        offset,
@@ -177,7 +183,9 @@ void NebulaSchemaProvider::setProp(cpp2::SchemaProp schemaProp) {
   schemaProp_ = std::move(schemaProp);
 }
 
-const cpp2::SchemaProp NebulaSchemaProvider::getProp() const { return schemaProp_; }
+const cpp2::SchemaProp NebulaSchemaProvider::getProp() const {
+  return schemaProp_;
+}
 
 StatusOr<std::pair<std::string, int64_t>> NebulaSchemaProvider::getTTLInfo() const {
   if (!schemaProp_.ttl_col_ref().has_value()) {

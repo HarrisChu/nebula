@@ -14,7 +14,7 @@ void ListEdgeIndexStatusProcessor::process(const cpp2::ListIndexStatusReq& req) 
   std::unique_ptr<kvstore::KVIterator> iter;
   auto retCode = kvstore_->prefix(kDefaultSpaceId, kDefaultPartId, JobUtil::jobPrefix(), &iter);
   if (retCode != nebula::cpp2::ErrorCode::SUCCEEDED) {
-    LOG(ERROR) << "Loading Job Failed" << apache::thrift::util::enumNameSafe(retCode);
+    LOG(INFO) << "Loading Job Failed" << apache::thrift::util::enumNameSafe(retCode);
     handleErrorCode(retCode);
     onFinished();
     return;
@@ -30,7 +30,7 @@ void ListEdgeIndexStatusProcessor::process(const cpp2::ListIndexStatusReq& req) 
       }
       auto optJob = nebula::value(optJobRet);
       auto jobDesc = optJob.toJobDesc();
-      if (jobDesc.get_cmd() == meta::cpp2::AdminCmd::REBUILD_EDGE_INDEX) {
+      if (jobDesc.get_type() == meta::cpp2::JobType::REBUILD_EDGE_INDEX) {
         auto paras = jobDesc.get_paras();
         DCHECK_GE(paras.size(), 1);
         auto spaceName = paras.back();
@@ -68,11 +68,11 @@ void ListEdgeIndexStatusProcessor::process(const cpp2::ListIndexStatusReq& req) 
   }
   for (auto& kv : tmp) {
     cpp2::IndexStatus status;
-    status.set_name(std::move(kv.first));
-    status.set_status(apache::thrift::util::enumNameSafe(kv.second));
+    status.name_ref() = std::move(kv.first);
+    status.status_ref() = apache::thrift::util::enumNameSafe(kv.second);
     statuses.emplace_back(std::move(status));
   }
-  resp_.set_statuses(std::move(statuses));
+  resp_.statuses_ref() = std::move(statuses);
   handleErrorCode(nebula::cpp2::ErrorCode::SUCCEEDED);
   onFinished();
 }

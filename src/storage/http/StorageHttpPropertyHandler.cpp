@@ -41,7 +41,7 @@ void StorageHttpPropertyHandler::onRequest(std::unique_ptr<HTTPMessage> headers)
     } else {
       resp_ =
           "Space should not be empty. "
-          "Usage: http:://ip:port/rocksdb_property?space=xxx&property=yyy";
+          "Usage: http://ip:port/rocksdb_property?space=xxx&property=yyy";
       err_ = HttpCode::E_ILLEGAL_ARGUMENT;
       break;
     }
@@ -51,7 +51,7 @@ void StorageHttpPropertyHandler::onRequest(std::unique_ptr<HTTPMessage> headers)
     } else {
       resp_ =
           "Property should not be empty. "
-          "Usage: http:://ip:port/rocksdb_property?space=xxx&property=yyy";
+          "Usage: http://ip:port/rocksdb_property?space=xxx&property=yyy";
       err_ = HttpCode::E_ILLEGAL_ARGUMENT;
       break;
     }
@@ -94,7 +94,9 @@ void StorageHttpPropertyHandler::onUpgrade(UpgradeProtocol) noexcept {
   // Do nothing
 }
 
-void StorageHttpPropertyHandler::requestComplete() noexcept { delete this; }
+void StorageHttpPropertyHandler::requestComplete() noexcept {
+  delete this;
+}
 
 void StorageHttpPropertyHandler::onError(ProxygenError error) noexcept {
   LOG(ERROR) << "Web service StorageHttpHandler got error: " << proxygen::getErrorString(error);

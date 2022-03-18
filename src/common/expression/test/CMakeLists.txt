@@ -5,10 +5,12 @@
 set(expression_test_common_libs
     $<TARGET_OBJECTS:parser_obj>
     $<TARGET_OBJECTS:expression_obj>
-    $<TARGET_OBJECTS:encryption_obj>
     $<TARGET_OBJECTS:network_obj>
     $<TARGET_OBJECTS:fs_obj>
     $<TARGET_OBJECTS:stats_obj>
+    $<TARGET_OBJECTS:graph_stats_obj>
+    $<TARGET_OBJECTS:meta_client_stats_obj>
+    $<TARGET_OBJECTS:storage_client_stats_obj>
     $<TARGET_OBJECTS:datatypes_obj>
     $<TARGET_OBJECTS:time_obj>
     $<TARGET_OBJECTS:datetime_parser_obj>
@@ -44,6 +46,14 @@ set(expression_test_common_libs
     $<TARGET_OBJECTS:ssl_obj>
     $<TARGET_OBJECTS:memory_obj>
 )
+
+
+if(ENABLE_STANDALONE_VERSION)
+set(expression_test_common_libs
+    ${expression_test_common_libs}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+)
+endif()
 
 nebula_add_library(
     expr_ctx_mock_obj OBJECT

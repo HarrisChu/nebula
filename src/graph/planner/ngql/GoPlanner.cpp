@@ -37,24 +37,24 @@ void GoPlanner::doBuildEdgeProps(std::unique_ptr<EdgeProps>& eProps, bool onlyDs
   for (const auto& e : goCtx_->over.edgeTypes) {
     EdgeProp ep;
     if (isInEdge) {
-      ep.set_type(-e);
+      ep.type_ref() = -e;
     } else {
-      ep.set_type(e);
+      ep.type_ref() = e;
     }
 
     if (onlyDst) {
-      ep.set_props({kDst});
+      ep.props_ref() = {kDst};
       eProps->emplace_back(std::move(ep));
       continue;
     }
 
     auto found = exprProps.edgeProps().find(e);
     if (found == exprProps.edgeProps().end()) {
-      ep.set_props({kDst});
+      ep.props_ref() = {kDst};
     } else {
       std::set<folly::StringPiece> props(found->second.begin(), found->second.end());
       props.emplace(kDst);
-      ep.set_props(std::vector<std::string>(props.begin(), props.end()));
+      ep.props_ref() = std::vector<std::string>(props.begin(), props.end());
     }
     eProps->emplace_back(std::move(ep));
   }
@@ -68,9 +68,9 @@ std::unique_ptr<GoPlanner::VertexProps> GoPlanner::buildVertexProps(
   auto vertexProps = std::make_unique<VertexProps>(propsMap.size());
   auto fun = [](auto& tag) {
     VertexProp vp;
-    vp.set_tag(tag.first);
+    vp.tag_ref() = tag.first;
     std::vector<std::string> props(tag.second.begin(), tag.second.end());
-    vp.set_props(std::move(props));
+    vp.props_ref() = std::move(props);
     return vp;
   };
   std::transform(propsMap.begin(), propsMap.end(), vertexProps->begin(), fun);
@@ -90,11 +90,8 @@ Expression* GoPlanner::loopCondition(uint32_t steps, const std::string& var) {
   return LogicalExpression::makeAnd(pool, step, earlyEnd);
 }
 
-/*
- * extract vid and edge's prop from GN
- * for joinDst & joinInput
- * output colNames {srcProps, edgeProps, kVid, "JOIN_DST_VID"}
- */
+// Extracts vid and edge's prop from GN for joinDst & joinInput.
+// The root plan node will output colNames of {srcProps, edgeProps, kVid, "JOIN_DST_VID"}.
 PlanNode* GoPlanner::extractSrcEdgePropsFromGN(PlanNode* dep, const std::string& input) {
   auto& srcEdgePropsExpr = goCtx_->srcEdgePropsExpr;
   auto* pool = goCtx_->qctx->objPool();
@@ -116,11 +113,8 @@ PlanNode* GoPlanner::extractSrcEdgePropsFromGN(PlanNode* dep, const std::string&
   return project;
 }
 
-/*
- * extract vid and dst from GN
- * for trackStartVid
- * output ColNames {srcVidColName, "TRACK_DST_VID"}
- */
+// Extracts vid and dst from GN for trackStartVid.
+// The root plan node will output ColNames of {srcVidColName, "TRACK_DST_VID"}.
 PlanNode* GoPlanner::extractSrcDstFromGN(PlanNode* dep, const std::string& input) {
   auto qctx = goCtx_->qctx;
   auto* pool = qctx->objPool();
@@ -138,11 +132,8 @@ PlanNode* GoPlanner::extractSrcDstFromGN(PlanNode* dep, const std::string& input
   return dedup;
 }
 
-/*
- * extract vid from runTime input
- * for joinInput
- * output ColNames {runtimeVidName, dstVidColName}
- */
+// Extracts vid from runTime input for joinInput.
+// The root plan node will output ColNames of {runtimeVidName, dstVidColName}.
 PlanNode* GoPlanner::extractVidFromRuntimeInput(PlanNode* dep) {
   if (dep == nullptr) {
     return dep;
@@ -166,13 +157,11 @@ PlanNode* GoPlanner::extractVidFromRuntimeInput(PlanNode* dep) {
   return dedup;
 }
 
-/*
- * establish a mapping between the original vId and the expanded destination vId
- * during each step of the expansion in the n-step and mton-step scenario
- * left: n-1 steps
- * right: step n
- * output ColNames {runtimeVidName, dstVidColName}
- */
+// Establishes a mapping between the original vId and the expanded destination vId
+// during each step of the expansion in the n-step and mton-step scenario.
+// The root plan node will output ColNames of {runtimeVidName, dstVidColName}.
+// left: (n-1)th step
+// right: (n)th step
 PlanNode* GoPlanner::trackStartVid(PlanNode* left, PlanNode* right) {
   auto qctx = goCtx_->qctx;
   auto* pool = qctx->objPool();
@@ -207,10 +196,8 @@ PlanNode* GoPlanner::trackStartVid(PlanNode* left, PlanNode* right) {
   return dedup;
 }
 
-/*
- * output ColNames {srcProps, edgeProps, kVid, "JOIN_DST_VID", "DST_VID",
- * dstProps}
- */
+// The root plan node will output ColNames of
+// {srcProps, edgeProps, kVid, "JOIN_DST_VID", "DST_VID", dstProps}
 PlanNode* GoPlanner::buildJoinDstPlan(PlanNode* dep) {
   auto qctx = goCtx_->qctx;
   auto* pool = qctx->objPool();
@@ -279,11 +266,10 @@ PlanNode* GoPlanner::buildJoinInputPlan(PlanNode* dep) {
   return join;
 }
 
-/*
- * left's colName dstVidColName join right's colName kVid
- * left  : n-1 steps
- * right : last step
- */
+// The column named as dstVidColName of the left plan node join on the column named as kVid of the
+// right one.
+// left  : (n-1)th step
+// right : last step
 PlanNode* GoPlanner::lastStepJoinInput(PlanNode* left, PlanNode* right) {
   auto qctx = goCtx_->qctx;
   auto* pool = qctx->objPool();
@@ -374,8 +360,7 @@ PlanNode* GoPlanner::buildSampleLimitImpl(PlanNode* input, T sampleLimit) {
   return node;
 }
 
-// generate
-// $limits[$step-1]
+// Generates $limits[$step-1]
 Expression* GoPlanner::stepSampleLimit() {
   auto qctx = goCtx_->qctx;
   // $limits

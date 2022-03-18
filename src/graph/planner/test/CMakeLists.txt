@@ -2,6 +2,18 @@
 #
 # This source code is licensed under Apache 2.0 License.
 
+set(EXEC_PLAN_TEST_FLAG_DEPS
+    $<TARGET_OBJECTS:graph_flags_obj>
+)
+
+if(ENABLE_STANDALONE_VERSION)
+set(EXEC_PLAN_TEST_FLAG_DEPS
+    ${EXEC_PLAN_TEST_FLAG_DEPS}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+    $<TARGET_OBJECTS:storage_local_server_obj>
+)
+endif()
+
 nebula_add_test(
     NAME execution_plan_test
     SOURCES
@@ -18,6 +30,7 @@ nebula_add_test(
         $<TARGET_OBJECTS:storage_thrift_obj>
         $<TARGET_OBJECTS:meta_client_obj>
         $<TARGET_OBJECTS:stats_obj>
+        $<TARGET_OBJECTS:graph_stats_obj>
         $<TARGET_OBJECTS:time_obj>
         $<TARGET_OBJECTS:meta_thrift_obj>
         $<TARGET_OBJECTS:common_thrift_obj>
@@ -29,7 +42,6 @@ nebula_add_test(
         $<TARGET_OBJECTS:time_obj>
         $<TARGET_OBJECTS:fs_obj>
         $<TARGET_OBJECTS:base_obj>
-        $<TARGET_OBJECTS:concurrent_obj>
         $<TARGET_OBJECTS:datatypes_obj>
         $<TARGET_OBJECTS:wkt_wkb_io_obj>
         $<TARGET_OBJECTS:conf_obj>
@@ -38,7 +50,7 @@ nebula_add_test(
         $<TARGET_OBJECTS:version_obj>
         $<TARGET_OBJECTS:query_engine_obj>
         $<TARGET_OBJECTS:graph_session_obj>
-        $<TARGET_OBJECTS:graph_flags_obj>
+        ${EXEC_PLAN_TEST_FLAG_DEPS}
         $<TARGET_OBJECTS:parser_obj>
         $<TARGET_OBJECTS:validator_obj>
         $<TARGET_OBJECTS:expr_visitor_obj>

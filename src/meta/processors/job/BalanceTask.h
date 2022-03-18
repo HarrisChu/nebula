@@ -18,6 +18,10 @@
 namespace nebula {
 namespace meta {
 
+/**
+ * @brief A balance task mainly include jobID, spaceId, partId, srcHost, dstHost, status, result
+ * The jobID, spaceId, partId, srcHost, dstHost make an unique id for the task
+ */
 class BalanceTask {
   friend class BalancePlan;
   FRIEND_TEST(BalanceTest, BalanceTaskTest);
@@ -30,6 +34,7 @@ class BalanceTask {
   FRIEND_TEST(BalanceTest, TryToRecoveryTest);
   FRIEND_TEST(BalanceTest, RecoveryTest);
   FRIEND_TEST(BalanceTest, StopPlanTest);
+  FRIEND_TEST(BalanceTest, BalanceZonePlanComplexTest);
 
  public:
   BalanceTask() = default;
@@ -46,33 +51,75 @@ class BalanceTask {
         partId_(partId),
         src_(src),
         dst_(dst),
-        taskIdStr_(buildTaskId()),
         kv_(kv),
-        client_(client) {}
+        client_(client) {
+    taskIdStr_ = buildTaskId();
+    commandStr_ = buildCommand();
+  }
 
-  const std::string& taskIdStr() const { return taskIdStr_; }
+  const std::string& taskIdStr() const {
+    return taskIdStr_;
+  }
 
-  const std::string& taskCommandStr() const { return commandStr_; }
+  const std::string& taskCommandStr() const {
+    return commandStr_;
+  }
 
+  /**
+   * @brief Running this task
+   */
   void invoke();
 
   void rollback();
 
-  BalanceTaskResult result() const { return ret_; }
+  BalanceTaskResult result() const {
+    return ret_;
+  }
+
+  const HostAddr& getSrcHost() const {
+    return src_;
+  }
+
+  const HostAddr& getDstHost() const {
+    return dst_;
+  }
+
+  void setSrcHost(const HostAddr& host) {
+    src_ = host;
+  }
+
+  void setDstHost(const HostAddr& host) {
+    dst_ = host;
+  }
+
+  PartitionID getPartId() const {
+    return partId_;
+  }
 
  private:
-  std::string buildTaskId() { return folly::stringPrintf("%d, %d:%d", jobId_, spaceId_, partId_); }
+  std::string buildTaskId() {
+    return folly::stringPrintf("%d, %d:%d", jobId_, spaceId_, partId_);
+  }
 
   std::string buildCommand() {
     return folly::stringPrintf(
         "%s:%d->%s:%d", src_.host.c_str(), src_.port, dst_.host.c_str(), dst_.port);
   }
 
+  /**
+   * @brief Save this task into kvStore
+   *
+   * @return
+   */
   bool saveInStore();
 
-  int64_t startTime() const { return startTimeMs_; }
+  int64_t startTime() const {
+    return startTimeMs_;
+  }
 
-  int64_t endTime() const { return endTimeMs_; }
+  int64_t endTime() const {
+    return endTimeMs_;
+  }
 
  private:
   JobID jobId_;

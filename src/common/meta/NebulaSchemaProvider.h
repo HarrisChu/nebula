@@ -25,7 +25,7 @@ class NebulaSchemaProvider : public SchemaProviderIf {
                 nebula::cpp2::PropertyType type,
                 bool nullable,
                 bool hasDefault,
-                Expression* defaultValue,
+                std::string defaultValue,
                 size_t size,
                 size_t offset,
                 size_t nullFlagPos,
@@ -40,33 +40,49 @@ class NebulaSchemaProvider : public SchemaProviderIf {
           nullFlagPos_(nullFlagPos),
           geoShape_(geoShape) {}
 
-    const char* name() const override { return name_.c_str(); }
+    const char* name() const override {
+      return name_.c_str();
+    }
 
-    nebula::cpp2::PropertyType type() const override { return type_; }
+    nebula::cpp2::PropertyType type() const override {
+      return type_;
+    }
 
-    bool nullable() const override { return nullable_; }
+    bool nullable() const override {
+      return nullable_;
+    }
 
-    bool hasDefault() const override { return hasDefault_; }
+    bool hasDefault() const override {
+      return hasDefault_;
+    }
 
-    Expression* defaultValue() const override { return defaultValue_; }
+    const std::string& defaultValue() const override {
+      return defaultValue_;
+    }
 
-    size_t size() const override { return size_; }
+    size_t size() const override {
+      return size_;
+    }
 
-    size_t offset() const override { return offset_; }
+    size_t offset() const override {
+      return offset_;
+    }
 
     size_t nullFlagPos() const override {
       DCHECK(nullable_);
       return nullFlagPos_;
     }
 
-    cpp2::GeoShape geoShape() const override { return geoShape_; }
+    cpp2::GeoShape geoShape() const override {
+      return geoShape_;
+    }
 
    private:
     std::string name_;
     nebula::cpp2::PropertyType type_;
     bool nullable_;
     bool hasDefault_;
-    Expression* defaultValue_;
+    std::string defaultValue_;
     size_t size_;
     size_t offset_;
     size_t nullFlagPos_;
@@ -97,7 +113,7 @@ class NebulaSchemaProvider : public SchemaProviderIf {
                 nebula::cpp2::PropertyType type,
                 size_t fixedStrLen = 0,
                 bool nullable = false,
-                Expression* defaultValue = nullptr,
+                std::string defaultValue = "",
                 cpp2::GeoShape geoShape = cpp2::GeoShape::ANY);
 
   static std::size_t fieldSize(nebula::cpp2::PropertyType type, std::size_t fixedStrLimit);

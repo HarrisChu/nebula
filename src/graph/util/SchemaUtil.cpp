@@ -1,13 +1,13 @@
-/* Copyright (c) 2020 vesoft inc. All rights reserved.
- *
- * This source code is licensed under Apache 2.0 License.
- */
+// Copyright (c) 2020 vesoft inc. All rights reserved.
+//
+// This source code is licensed under Apache 2.0 License.
 
 #include "graph/util/SchemaUtil.h"
 
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
 #include "common/base/Base.h"
+#include "common/base/Status.h"
 #include "graph/context/QueryContext.h"
 #include "graph/context/QueryExpressionContext.h"
 
@@ -54,19 +54,19 @@ Status SchemaUtil::validateProps(const std::vector<SchemaPropItem *> &schemaProp
 
 // static
 std::shared_ptr<const meta::NebulaSchemaProvider> SchemaUtil::generateSchemaProvider(
-    ObjectPool *pool, const SchemaVer ver, const meta::cpp2::Schema &schema) {
+    const SchemaVer ver, const meta::cpp2::Schema &schema) {
   auto schemaPtr = std::make_shared<meta::NebulaSchemaProvider>(ver);
   for (auto col : schema.get_columns()) {
     bool hasDef = col.default_value_ref().has_value();
-    Expression *defaultValueExpr = nullptr;
+    std::string exprStr;
     if (hasDef) {
-      defaultValueExpr = Expression::decode(pool, *col.default_value_ref());
+      exprStr = *col.default_value_ref();
     }
     schemaPtr->addField(col.get_name(),
                         col.get_type().get_type(),
                         col.type.type_length_ref().value_or(0),
                         col.nullable_ref().value_or(false),
-                        hasDef ? defaultValueExpr : nullptr,
+                        exprStr,
                         col.type.geo_shape_ref().value_or(meta::cpp2::GeoShape::ANY));
   }
   return schemaPtr;
@@ -80,7 +80,7 @@ Status SchemaUtil::setTTLDuration(SchemaPropItem *schemaProp, meta::cpp2::Schema
   }
 
   auto ttlDuration = ret.value();
-  schema.schema_prop_ref().value().set_ttl_duration(ttlDuration);
+  schema.schema_prop_ref().value().ttl_duration_ref() = ttlDuration;
   return Status::OK();
 }
 
@@ -93,7 +93,7 @@ Status SchemaUtil::setTTLCol(SchemaPropItem *schemaProp, meta::cpp2::Schema &sch
 
   auto ttlColName = ret.value();
   if (ttlColName.empty()) {
-    schema.schema_prop_ref().value().set_ttl_col("");
+    schema.schema_prop_ref().value().ttl_col_ref() = "";
     return Status::OK();
   }
   // Check the legality of the ttl column name
@@ -105,7 +105,7 @@ Status SchemaUtil::setTTLCol(SchemaPropItem *schemaProp, meta::cpp2::Schema &sch
           col.type.type != nebula::cpp2::PropertyType::TIMESTAMP) {
         return Status::Error("Ttl column type illegal");
       }
-      schema.schema_prop_ref().value().set_ttl_col(ttlColName);
+      schema.schema_prop_ref().value().ttl_col_ref() = ttlColName;
       return Status::OK();
     }
   }
@@ -116,7 +116,7 @@ Status SchemaUtil::setTTLCol(SchemaPropItem *schemaProp, meta::cpp2::Schema &sch
 Status SchemaUtil::setComment(SchemaPropItem *schemaProp, meta::cpp2::Schema &schema) {
   auto ret = schemaProp->getComment();
   if (ret.ok()) {
-    schema.schema_prop_ref()->set_comment(std::move(ret).value());
+    schema.schema_prop_ref()->comment_ref() = std::move(ret).value();
   }
   return Status::OK();
 }
@@ -348,9 +348,9 @@ StatusOr<std::unique_ptr<std::vector<storage::cpp2::VertexProp>>> SchemaUtil::ge
     }
     storage::cpp2::VertexProp vProp;
     const auto tagId = tag.first;
-    vProp.set_tag(tagId);
+    vProp.tag_ref() = tagId;
     propNames.emplace_back(nebula::kTag);  // "_tag"
-    vProp.set_props(std::move(propNames));
+    vProp.props_ref() = std::move(propNames);
     vertexProps->emplace_back(std::move(vProp));
   }
   return vertexProps;
@@ -372,8 +372,8 @@ StatusOr<std::unique_ptr<std::vector<storage::cpp2::EdgeProp>>> SchemaUtil::getE
       }
     }
     storage::cpp2::EdgeProp prop;
-    prop.set_type(edgeType);
-    prop.set_props(std::move(propNames));
+    prop.type_ref() = edgeType;
+    prop.props_ref() = std::move(propNames);
     edgeProps->emplace_back(std::move(prop));
   }
   return edgeProps;

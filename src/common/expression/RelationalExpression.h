@@ -119,10 +119,12 @@ class RelationalExpression final : public BinaryExpression {
     return pool_->add(new RelationalExpression(pool_, kind(), left()->clone(), right()->clone()));
   }
 
-  bool isRelExpr() const override { return true; }
+  bool isRelExpr() const override {
+    return true;
+  }
 
  private:
-  explicit RelationalExpression(ObjectPool* pool, Kind kind, Expression* lhs, Expression* rhs)
+  RelationalExpression(ObjectPool* pool, Kind kind, Expression* lhs, Expression* rhs)
       : BinaryExpression(pool, kind, lhs, rhs) {}
 
  private:

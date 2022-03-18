@@ -3,7 +3,8 @@
  * This source code is licensed under Apache 2.0 License.
  */
 
-#pragma once
+#ifndef COMMON_UTILS_MEMORYLOCKWRAPPER_H
+#define COMMON_UTILS_MEMORYLOCKWRAPPER_H
 
 #include <algorithm>
 
@@ -51,14 +52,18 @@ class MemoryLockGuard {
   }
 
   ~MemoryLockGuard() {
-    if (locked_) {
+    if (locked_ && autoUnlock_) {
       lock_->unlockBatch(keys_);
     }
   }
 
-  bool isLocked() const noexcept { return locked_; }
+  bool isLocked() const noexcept {
+    return locked_;
+  }
 
-  operator bool() const noexcept { return isLocked(); }
+  operator bool() const noexcept {
+    return isLocked();
+  }
 
   // return the first conflict key, if any
   // this has to be called iff locked_ is false;
@@ -67,18 +72,17 @@ class MemoryLockGuard {
     return *iter_;
   }
 
-  // this will manual set the lock to unlocked state
-  // which mean will not release all locks automatically
-  // please make sure you really know the side effect
-  void forceLock() { locked_ = true; }
-
-  void forceUnlock() { locked_ = false; }
+  void setAutoUnlock(bool autoUnlock) {
+    autoUnlock_ = autoUnlock;
+  }
 
  protected:
   MemoryLockCore<Key>* lock_;
   std::vector<Key> keys_;
   typename std::vector<Key>::iterator iter_;
   bool locked_{false};
+  bool autoUnlock_{true};
 };
 
 }  // namespace nebula
+#endif

@@ -27,26 +27,28 @@ TEST(RestoreProcessorTest, RestoreTest) {
   hosts.emplace_back(host2);
   hosts.emplace_back(host3);
 
+  std::vector<kvstore::KV> times;
   for (auto h : hosts) {
-    ActiveHostsMan::updateHostInfo(kv.get(), h, HostInfo(now, meta::cpp2::HostRole::STORAGE, ""));
+    ActiveHostsMan::updateHostInfo(
+        kv.get(), h, HostInfo(now, meta::cpp2::HostRole::STORAGE, ""), times);
   }
-
-  meta::TestUtils::registerHB(kv.get(), hosts);
+  TestUtils::doPut(kv.get(), times);
+  TestUtils::registerHB(kv.get(), hosts);
 
   // mock admin client
   bool ret = false;
   cpp2::SpaceDesc properties;
   GraphSpaceID id = 1;
-  properties.set_space_name("test_space");
+  properties.space_name_ref() = "test_space";
   int partNum = 10;
-  properties.set_partition_num(partNum);
-  properties.set_replica_factor(3);
+  properties.partition_num_ref() = partNum;
+  properties.replica_factor_ref() = 3;
 
   cpp2::SpaceDesc properties2;
   GraphSpaceID id2 = 2;
-  properties2.set_space_name("test_space2");
-  properties2.set_partition_num(partNum);
-  properties2.set_replica_factor(3);
+  properties2.space_name_ref() = "test_space2";
+  properties2.partition_num_ref() = partNum;
+  properties2.replica_factor_ref() = 3;
 
   auto spaceVal = MetaKeyUtils::spaceVal(properties);
   std::vector<nebula::kvstore::KV> data;
@@ -90,17 +92,18 @@ TEST(RestoreProcessorTest, RestoreTest) {
                     MetaKeyUtils::lastUpdateTimeVal(lastUpdateTime));
 
   folly::Baton<true, std::atomic> baton;
-  kv->asyncMultiPut(0, 0, std::move(data), [&](nebula::cpp2::ErrorCode code) {
-    ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
-    baton.post();
-  });
+  kv->asyncMultiPut(
+      kDefaultSpaceId, kDefaultPartId, std::move(data), [&](nebula::cpp2::ErrorCode code) {
+        ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
+        baton.post();
+      });
   baton.wait();
 
   std::unordered_set<GraphSpaceID> spaces = {id};
-  auto backupName = folly::format("BACKUP_{}", MetaKeyUtils::genTimestampStr()).str();
+  auto backupName = folly::sformat("BACKUP_{}", MetaKeyUtils::genTimestampStr());
   auto spaceNames = std::make_unique<std::vector<std::string>>();
   spaceNames->emplace_back("test_space");
-  auto backupFiles = MetaServiceUtils::backupSpaces(kv.get(), spaces, backupName, spaceNames.get());
+  auto backupFiles = MetaServiceUtils::backupTables(kv.get(), spaces, backupName, spaceNames.get());
   DCHECK(nebula::hasValue(backupFiles));
   {
     cpp2::RestoreMetaReq req;
@@ -114,7 +117,7 @@ TEST(RestoreProcessorTest, RestoreTest) {
       return false;
     });
     ASSERT_EQ(it, files.cend());
-    req.set_files(std::move(files));
+    req.files_ref() = std::move(files);
     std::vector<cpp2::HostPair> hostPairs;
     HostAddr host4("127.0.0.4", 3360);
     HostAddr host5("127.0.0.5", 3360);
@@ -126,17 +129,18 @@ TEST(RestoreProcessorTest, RestoreTest) {
       hostPairs.emplace_back(apache::thrift::FragileConstructor(), hm.first, hm.second);
     }
 
-    req.set_hosts(std::move(hostPairs));
+    req.hosts_ref() = std::move(hostPairs);
     fs::TempDir restoreTootPath("/tmp/RestoreTest.XXXXXX");
     std::unique_ptr<kvstore::KVStore> kvRestore(MockCluster::initMetaKV(restoreTootPath.path()));
     std::vector<nebula::kvstore::KV> restoreData;
     restoreData.emplace_back(MetaKeyUtils::userKey("root"), MetaKeyUtils::userVal("password"));
 
     folly::Baton<true, std::atomic> restoreBaton;
-    kvRestore->asyncMultiPut(0, 0, std::move(restoreData), [&](nebula::cpp2::ErrorCode code) {
-      ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
-      restoreBaton.post();
-    });
+    kvRestore->asyncMultiPut(
+        kDefaultSpaceId, kDefaultPartId, std::move(restoreData), [&](nebula::cpp2::ErrorCode code) {
+          ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
+          restoreBaton.post();
+        });
     restoreBaton.wait();
 
     auto* processor = RestoreProcessor::instance(kvRestore.get());
@@ -240,26 +244,29 @@ TEST(RestoreProcessorTest, RestoreFullTest) {
   hosts.emplace_back(host2);
   hosts.emplace_back(host3);
 
+  std::vector<kvstore::KV> times;
   for (auto h : hosts) {
-    ActiveHostsMan::updateHostInfo(kv.get(), h, HostInfo(now, meta::cpp2::HostRole::STORAGE, ""));
+    ActiveHostsMan::updateHostInfo(
+        kv.get(), h, HostInfo(now, meta::cpp2::HostRole::STORAGE, ""), times);
   }
 
-  meta::TestUtils::registerHB(kv.get(), hosts);
+  TestUtils::doPut(kv.get(), times);
+  TestUtils::registerHB(kv.get(), hosts);
 
   // mock admin client
   bool ret = false;
   cpp2::SpaceDesc properties;
   GraphSpaceID id = 1;
-  properties.set_space_name("test_space");
+  properties.space_name_ref() = "test_space";
   int partNum = 10;
-  properties.set_partition_num(partNum);
-  properties.set_replica_factor(3);
+  properties.partition_num_ref() = partNum;
+  properties.replica_factor_ref() = 3;
 
   cpp2::SpaceDesc properties2;
   GraphSpaceID id2 = 2;
-  properties2.set_space_name("test_space2");
-  properties2.set_partition_num(partNum);
-  properties2.set_replica_factor(3);
+  properties2.space_name_ref() = "test_space2";
+  properties2.partition_num_ref() = partNum;
+  properties2.replica_factor_ref() = 3;
 
   auto spaceVal = MetaKeyUtils::spaceVal(properties);
   std::vector<nebula::kvstore::KV> data;
@@ -294,15 +301,16 @@ TEST(RestoreProcessorTest, RestoreFullTest) {
   data.emplace_back(MetaKeyUtils::zoneKey(zoneName), MetaKeyUtils::zoneVal(hosts));
 
   folly::Baton<true, std::atomic> baton;
-  kv->asyncMultiPut(0, 0, std::move(data), [&](nebula::cpp2::ErrorCode code) {
-    ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
-    baton.post();
-  });
+  kv->asyncMultiPut(
+      kDefaultSpaceId, kDefaultPartId, std::move(data), [&](nebula::cpp2::ErrorCode code) {
+        ret = (code == nebula::cpp2::ErrorCode::SUCCEEDED);
+        baton.post();
+      });
   baton.wait();
 
   std::unordered_set<GraphSpaceID> spaces = {id};
-  auto backupName = folly::format("BACKUP_{}", MetaKeyUtils::genTimestampStr()).str();
-  auto backupFiles = MetaServiceUtils::backupSpaces(kv.get(), spaces, backupName, nullptr);
+  auto backupName = folly::sformat("BACKUP_{}", MetaKeyUtils::genTimestampStr());
+  auto backupFiles = MetaServiceUtils::backupTables(kv.get(), spaces, backupName, nullptr);
   DCHECK(nebula::hasValue(backupFiles));
   {
     cpp2::RestoreMetaReq req;
@@ -316,7 +324,7 @@ TEST(RestoreProcessorTest, RestoreFullTest) {
       return false;
     });
     ASSERT_EQ(it, files.cend());
-    req.set_files(std::move(files));
+    req.files_ref() = std::move(files);
     std::vector<cpp2::HostPair> hostPairs;
     HostAddr host4("127.0.0.4", 3360);
     HostAddr host5("127.0.0.5", 3360);
@@ -328,7 +336,7 @@ TEST(RestoreProcessorTest, RestoreFullTest) {
       hostPairs.emplace_back(apache::thrift::FragileConstructor(), hm.first, hm.second);
     }
 
-    req.set_hosts(std::move(hostPairs));
+    req.hosts_ref() = std::move(hostPairs);
     fs::TempDir restoreTootPath("/tmp/RestoreFullTest.XXXXXX");
     std::unique_ptr<kvstore::KVStore> kvRestore(MockCluster::initMetaKV(restoreTootPath.path()));
     std::vector<nebula::kvstore::KV> restoreData;

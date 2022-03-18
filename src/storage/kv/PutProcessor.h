@@ -13,7 +13,9 @@ namespace nebula {
 namespace storage {
 
 extern ProcessorCounters kPutCounters;
-
+/**
+ * @brief this is a simple put() interface when storage run in KV mode.
+ */
 class PutProcessor : public BaseProcessor<cpp2::ExecResponse> {
  public:
   static PutProcessor* instance(StorageEnv* env,
@@ -24,7 +26,7 @@ class PutProcessor : public BaseProcessor<cpp2::ExecResponse> {
   void process(const cpp2::KVPutRequest& req);
 
  private:
-  explicit PutProcessor(StorageEnv* env, const ProcessorCounters* counters)
+  PutProcessor(StorageEnv* env, const ProcessorCounters* counters)
       : BaseProcessor<cpp2::ExecResponse>(env, counters) {}
 };
 

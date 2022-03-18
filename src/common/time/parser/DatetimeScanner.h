@@ -3,7 +3,8 @@
  * This source code is licensed under Apache 2.0 License.
  */
 
-#pragma once
+#ifndef COMMON_TIME_PARSER_DATETIMESCANNER_H
+#define COMMON_TIME_PARSER_DATETIMESCANNER_H
 
 #include "common/base/Base.h"
 
@@ -36,7 +37,9 @@ class DatetimeScanner : public yyFlexLexer {
  public:
   // Called by DatetimeReader to set the `readBuffer' callback, which would be
   // invoked by LexerInput to fill the stream buffer.
-  void setReadBuffer(std::function<int(char *, int)> readBuffer) { readBuffer_ = readBuffer; }
+  void setReadBuffer(std::function<int(char *, int)> readBuffer) {
+    readBuffer_ = readBuffer;
+  }
 
   // Manually invoked by DatetimeReader to recover from a failure state.
   // This makes the scanner reentrant.
@@ -44,13 +47,19 @@ class DatetimeScanner : public yyFlexLexer {
     yy_flush_buffer(yy_buffer_stack ? yy_buffer_stack[yy_buffer_stack_top] : nullptr);
   }
 
-  void setInput(std::string *input) { input_ = input; }
+  void setInput(std::string *input) {
+    input_ = input;
+  }
 
-  std::string *input() { return input_; }
+  std::string *input() {
+    return input_;
+  }
 
  protected:
   // Called when YY_INPUT is invoked
-  int LexerInput(char *buf, int maxSize) override { return readBuffer_(buf, maxSize); }
+  int LexerInput(char *buf, int maxSize) override {
+    return readBuffer_(buf, maxSize);
+  }
 
   using TokenType = nebula::time::DatetimeParser::token;
 
@@ -66,3 +75,4 @@ class DatetimeScanner : public yyFlexLexer {
 
 }  // namespace time
 }  // namespace nebula
+#endif

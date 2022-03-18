@@ -275,6 +275,29 @@ void GetNeighborsIter::next() {
   }
 }
 
+size_t GetNeighborsIter::size() const {
+  size_t count = 0;
+  for (const auto& dsIdx : dsIndices_) {
+    for (const auto& row : dsIdx.ds->rows) {
+      for (const auto& edgeIdx : dsIdx.edgePropsMap) {
+        const auto& cell = row[edgeIdx.second.colIdx];
+        if (LIKELY(cell.isList())) {
+          count += cell.getList().size();
+        }
+      }
+    }
+  }
+  return count;
+}
+
+size_t GetNeighborsIter::numRows() const {
+  size_t count = 0;
+  for (const auto& dsIdx : dsIndices_) {
+    count += dsIdx.ds->size();
+  }
+  return count;
+}
+
 void GetNeighborsIter::erase() {
   DCHECK_GE(bitIdx_, 0);
   DCHECK_LT(bitIdx_, bitset_.size());
@@ -441,7 +464,7 @@ Value GetNeighborsIter::getVertex(const std::string& name) const {
 
 List GetNeighborsIter::getVertices() {
   List vertices;
-  vertices.values.reserve(size());
+  vertices.reserve(numRows());
   valid_ = true;
   colIdx_ = -2;
   for (currentDs_ = dsIndices_.begin(); currentDs_ < dsIndices_.end(); ++currentDs_) {
@@ -513,7 +536,7 @@ Value GetNeighborsIter::getEdge() const {
 
 List GetNeighborsIter::getEdges() {
   List edges;
-  edges.values.reserve(size());
+  edges.reserve(size());
   for (; valid(); next()) {
     auto edge = getEdge();
     if (edge.isEdge()) {
@@ -612,7 +635,9 @@ void SequentialIter::init(std::vector<std::unique_ptr<Iterator>>&& iterators) {
   iter_ = rows_->begin();
 }
 
-bool SequentialIter::valid() const { return Iterator::valid() && iter_ < rows_->end(); }
+bool SequentialIter::valid() const {
+  return Iterator::valid() && iter_ < rows_->end();
+}
 
 void SequentialIter::next() {
   if (valid()) {
@@ -621,7 +646,9 @@ void SequentialIter::next() {
   }
 }
 
-void SequentialIter::erase() { iter_ = rows_->erase(iter_); }
+void SequentialIter::erase() {
+  iter_ = rows_->erase(iter_);
+}
 
 void SequentialIter::unstableErase() {
   std::swap(rows_->back(), *iter_);
@@ -645,13 +672,31 @@ void SequentialIter::doReset(size_t pos) {
   iter_ = rows_->begin() + pos;
 }
 
+const Value& SequentialIter::getColumn(const std::string& col) const {
+  if (!valid()) {
+    return Value::kNullValue;
+  }
+  auto& row = *iter_;
+  auto index = colIndices_.find(col);
+  if (index == colIndices_.end()) {
+    return Value::kNullValue;
+  }
+
+  DCHECK_LT(index->second, row.values.size()) << "index: " << index->second << " row" << row;
+  return row.values[index->second];
+}
+
 const Value& SequentialIter::getColumn(int32_t index) const {
   return getColumnByIndex(index, iter_);
 }
 
-Value SequentialIter::getVertex(const std::string& name) const { return getColumn(name); }
+Value SequentialIter::getVertex(const std::string& name) const {
+  return getColumn(name);
+}
 
-Value SequentialIter::getEdge() const { return getColumn("EDGE"); }
+Value SequentialIter::getEdge() const {
+  return getColumn("EDGE");
+}
 
 PropIter::PropIter(std::shared_ptr<Value> value, bool checkMemory)
     : SequentialIter(value, checkMemory) {
@@ -854,7 +899,6 @@ Value PropIter::getEdge() const {
 List PropIter::getVertices() {
   DCHECK(iter_ == rows_->begin());
   List vertices;
-  vertices.values.reserve(size());
   for (; valid(); next()) {
     vertices.values.emplace_back(getVertex());
   }
@@ -877,7 +921,9 @@ List PropIter::getEdges() {
   return edges;
 }
 
-const Value& PropIter::getColumn(int32_t index) const { return getColumnByIndex(index, iter_); }
+const Value& PropIter::getColumn(int32_t index) const {
+  return getColumnByIndex(index, iter_);
+}
 
 std::ostream& operator<<(std::ostream& os, Iterator::Kind kind) {
   switch (kind) {

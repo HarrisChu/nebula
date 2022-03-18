@@ -10,6 +10,7 @@
 #include <folly/json.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
+#include "graph/planner/plan/PlanNodeVisitor.h"
 #include "graph/util/ExpressionUtils.h"
 #include "graph/util/ToJson.h"
 
@@ -18,11 +19,13 @@ using folly::stringPrintf;
 namespace nebula {
 namespace graph {
 
-int64_t Explore::limit() const {
-  QueryExpressionContext ctx;
-  DCHECK(ExpressionUtils::isEvaluableExpr(limit_));
-  return DCHECK_NOTNULL(limit_)->eval(ctx).getInt();
+int64_t Explore::limit(QueryContext* qctx) const {
+  DCHECK(ExpressionUtils::isEvaluableExpr(limit_, qctx));
+  return DCHECK_NOTNULL(limit_)
+      ->eval(QueryExpressionContext(qctx ? qctx->ectx() : nullptr)())
+      .getInt();
 }
+
 std::unique_ptr<PlanNodeDescription> Explore::explain() const {
   auto desc = SingleInputNode::explain();
   addDescription("space", folly::to<std::string>(space_), desc.get());
@@ -192,6 +195,7 @@ void IndexScan::cloneMembers(const IndexScan& g) {
   isEdge_ = g.isEdge();
   schemaId_ = g.schemaId();
   isEmptyResultSet_ = g.isEmptyResultSet();
+  yieldColumns_ = g.yieldColumns();
 }
 
 std::unique_ptr<PlanNodeDescription> ScanVertices::explain() const {
@@ -266,6 +270,10 @@ std::unique_ptr<PlanNodeDescription> Filter::explain() const {
   return desc;
 }
 
+void Filter::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
+}
+
 PlanNode* Filter::clone() const {
   auto* newFilter = Filter::make(qctx_, nullptr);
   newFilter->cloneMembers(*this);
@@ -279,7 +287,9 @@ void Filter::cloneMembers(const Filter& f) {
   needStableFilter_ = f.needStableFilter();
 }
 
-void SetOp::cloneMembers(const SetOp& s) { BinaryInputNode::cloneMembers(s); }
+void SetOp::cloneMembers(const SetOp& s) {
+  BinaryInputNode::cloneMembers(s);
+}
 
 PlanNode* Union::clone() const {
   auto* newUnion = Union::make(qctx_, nullptr, nullptr);
@@ -287,7 +297,9 @@ PlanNode* Union::clone() const {
   return newUnion;
 }
 
-void Union::cloneMembers(const Union& f) { SetOp::cloneMembers(f); }
+void Union::cloneMembers(const Union& f) {
+  SetOp::cloneMembers(f);
+}
 
 PlanNode* Intersect::clone() const {
   auto* newIntersect = Intersect::make(qctx_, nullptr, nullptr);
@@ -295,7 +307,9 @@ PlanNode* Intersect::clone() const {
   return newIntersect;
 }
 
-void Intersect::cloneMembers(const Intersect& f) { SetOp::cloneMembers(f); }
+void Intersect::cloneMembers(const Intersect& f) {
+  SetOp::cloneMembers(f);
+}
 
 PlanNode* Minus::clone() const {
   auto* newMinus = Minus::make(qctx_, nullptr, nullptr);
@@ -303,7 +317,9 @@ PlanNode* Minus::clone() const {
   return newMinus;
 }
 
-void Minus::cloneMembers(const Minus& f) { SetOp::cloneMembers(f); }
+void Minus::cloneMembers(const Minus& f) {
+  SetOp::cloneMembers(f);
+}
 
 Project::Project(QueryContext* qctx, PlanNode* input, YieldColumns* cols)
     : SingleInputNode(qctx, Kind::kProject, input), cols_(cols) {
@@ -323,6 +339,10 @@ std::unique_ptr<PlanNodeDescription> Project::explain() const {
   }
   addDescription("columns", folly::toJson(columns), desc.get());
   return desc;
+}
+
+void Project::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
 }
 
 PlanNode* Project::clone() const {
@@ -383,16 +403,16 @@ void Sort::cloneMembers(const Sort& p) {
 }
 
 // Get constant count value
-int64_t Limit::count() const {
+int64_t Limit::count(QueryContext* qctx) const {
   if (count_ == nullptr) {
     return -1;
   }
-  DCHECK(ExpressionUtils::isEvaluableExpr(count_));
-  QueryExpressionContext ctx;
-  auto s = count_->eval(ctx).getInt();
+  DCHECK(ExpressionUtils::isEvaluableExpr(count_, qctx));
+  auto s = count_->eval(QueryExpressionContext(qctx ? qctx->ectx() : nullptr)()).getInt();
   DCHECK_GE(s, 0);
   return s;
 }
+
 std::unique_ptr<PlanNodeDescription> Limit::explain() const {
   auto desc = SingleInputNode::explain();
   addDescription("offset", folly::to<std::string>(offset_), desc.get());
@@ -479,6 +499,10 @@ std::unique_ptr<PlanNodeDescription> Aggregate::explain() const {
   return desc;
 }
 
+void Aggregate::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
+}
+
 PlanNode* Aggregate::clone() const {
   auto* newAggregate = Aggregate::make(qctx_, nullptr);
   newAggregate->cloneMembers(*this);
@@ -512,7 +536,9 @@ PlanNode* SwitchSpace::clone() const {
   return newSs;
 }
 
-void SwitchSpace::cloneMembers(const SwitchSpace& l) { SingleInputNode::cloneMembers(l); }
+void SwitchSpace::cloneMembers(const SwitchSpace& l) {
+  SingleInputNode::cloneMembers(l);
+}
 
 Dedup::Dedup(QueryContext* qctx, PlanNode* input) : SingleInputNode(qctx, Kind::kDedup, input) {
   copyInputColNames(input);
@@ -524,7 +550,9 @@ PlanNode* Dedup::clone() const {
   return newDedup;
 }
 
-void Dedup::cloneMembers(const Dedup& l) { SingleInputNode::cloneMembers(l); }
+void Dedup::cloneMembers(const Dedup& l) {
+  SingleInputNode::cloneMembers(l);
+}
 
 std::unique_ptr<PlanNodeDescription> DataCollect::explain() const {
   auto desc = VariableDependencyNode::explain();
@@ -633,7 +661,9 @@ PlanNode* LeftJoin::clone() const {
   return newLeftJoin;
 }
 
-void LeftJoin::cloneMembers(const LeftJoin& l) { Join::cloneMembers(l); }
+void LeftJoin::cloneMembers(const LeftJoin& l) {
+  Join::cloneMembers(l);
+}
 
 std::unique_ptr<PlanNodeDescription> InnerJoin::explain() const {
   auto desc = Join::explain();
@@ -647,7 +677,9 @@ PlanNode* InnerJoin::clone() const {
   return newInnerJoin;
 }
 
-void InnerJoin::cloneMembers(const InnerJoin& l) { Join::cloneMembers(l); }
+void InnerJoin::cloneMembers(const InnerJoin& l) {
+  Join::cloneMembers(l);
+}
 
 std::unique_ptr<PlanNodeDescription> Assign::explain() const {
   auto desc = SingleDependencyNode::explain();
@@ -695,22 +727,26 @@ void Traverse::cloneMembers(const Traverse& g) {
   GetNeighbors::cloneMembers(g);
 
   setStepRange(g.range_);
-  setVertexFilter(g.vFilter_->clone());
-  setEdgeFilter(g.eFilter_->clone());
+  if (g.vFilter_ != nullptr) {
+    setVertexFilter(g.vFilter_->clone());
+  }
+  if (g.eFilter_ != nullptr) {
+    setEdgeFilter(g.eFilter_->clone());
+  }
+  setTrackPrevPath(g.trackPrevPath_);
 }
 
 std::unique_ptr<PlanNodeDescription> Traverse::explain() const {
   auto desc = GetNeighbors::explain();
-  if (range_ != nullptr) {
-    addDescription("steps", range_->toString(), desc.get());
-  }
-  if (vFilter_ != nullptr) {
-    addDescription("vertex filter", vFilter_->toString(), desc.get());
-  }
-  if (eFilter_ != nullptr) {
-    addDescription("edge filter", eFilter_->toString(), desc.get());
-  }
+  addDescription("steps", range_ != nullptr ? range_->toString() : "", desc.get());
+  addDescription("vertex filter", vFilter_ != nullptr ? vFilter_->toString() : "", desc.get());
+  addDescription("edge filter", eFilter_ != nullptr ? eFilter_->toString() : "", desc.get());
+  addDescription("if_track_previous_path", util::toJson(trackPrevPath_), desc.get());
   return desc;
+}
+
+void Traverse::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
 }
 
 AppendVertices* AppendVertices::clone() const {
@@ -727,14 +763,93 @@ void AppendVertices::cloneMembers(const AppendVertices& a) {
   } else {
     setVertexFilter(nullptr);
   }
+  setTrackPrevPath(a.trackPrevPath_);
 }
 
 std::unique_ptr<PlanNodeDescription> AppendVertices::explain() const {
   auto desc = GetVertices::explain();
-  if (vFilter_ != nullptr) {
-    addDescription("vertex filter", vFilter_->toString(), desc.get());
-  }
+  addDescription("vertex_filter", vFilter_ != nullptr ? vFilter_->toString() : "", desc.get());
+  addDescription("if_track_previous_path", util::toJson(trackPrevPath_), desc.get());
   return desc;
 }
+
+void AppendVertices::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
+}
+
+std::unique_ptr<PlanNodeDescription> BiJoin::explain() const {
+  auto desc = BinaryInputNode::explain();
+  addDescription("hashKeys", folly::toJson(util::toJson(hashKeys_)), desc.get());
+  addDescription("probeKeys", folly::toJson(util::toJson(probeKeys_)), desc.get());
+  return desc;
+}
+
+void BiJoin::accept(PlanNodeVisitor* visitor) {
+  visitor->visit(this);
+}
+
+void BiJoin::cloneMembers(const BiJoin& j) {
+  BinaryInputNode::cloneMembers(j);
+
+  std::vector<Expression*> hKeys;
+  for (auto* item : j.hashKeys()) {
+    hKeys.emplace_back(item->clone());
+  }
+  hashKeys_ = std::move(hKeys);
+
+  std::vector<Expression*> pKeys;
+  for (auto* item : j.probeKeys()) {
+    pKeys.emplace_back(item->clone());
+  }
+  probeKeys_ = std::move(pKeys);
+}
+
+BiJoin::BiJoin(QueryContext* qctx,
+               Kind kind,
+               PlanNode* left,
+               PlanNode* right,
+               std::vector<Expression*> hashKeys,
+               std::vector<Expression*> probeKeys)
+    : BinaryInputNode(qctx, kind, left, right),
+      hashKeys_(std::move(hashKeys)),
+      probeKeys_(std::move(probeKeys)) {
+  auto lColNames = left->colNames();
+  auto rColNames = right->colNames();
+  lColNames.insert(lColNames.end(), rColNames.begin(), rColNames.end());
+  setColNames(lColNames);
+}
+
+std::unique_ptr<PlanNodeDescription> BiLeftJoin::explain() const {
+  auto desc = BiJoin::explain();
+  addDescription("kind", "LeftJoin", desc.get());
+  return desc;
+}
+
+PlanNode* BiLeftJoin::clone() const {
+  auto* newLeftJoin = BiLeftJoin::make(qctx_, nullptr, nullptr);
+  newLeftJoin->cloneMembers(*this);
+  return newLeftJoin;
+}
+
+void BiLeftJoin::cloneMembers(const BiLeftJoin& l) {
+  BiJoin::cloneMembers(l);
+}
+
+std::unique_ptr<PlanNodeDescription> BiInnerJoin::explain() const {
+  auto desc = BiJoin::explain();
+  addDescription("kind", "InnerJoin", desc.get());
+  return desc;
+}
+
+PlanNode* BiInnerJoin::clone() const {
+  auto* newInnerJoin = BiInnerJoin::make(qctx_, nullptr, nullptr);
+  newInnerJoin->cloneMembers(*this);
+  return newInnerJoin;
+}
+
+void BiInnerJoin::cloneMembers(const BiInnerJoin& l) {
+  BiJoin::cloneMembers(l);
+}
+
 }  // namespace graph
 }  // namespace nebula

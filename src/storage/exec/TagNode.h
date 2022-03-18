@@ -13,11 +13,23 @@
 namespace nebula {
 namespace storage {
 
-// TagNode will return a DataSet of specified props of tagId
+/**
+ * @brief TagNode will return a DataSet of specified props of tagId
+ *
+ * @see IterateNode<T>
+ */
 class TagNode final : public IterateNode<VertexID> {
  public:
   using RelNode::doExecute;
 
+  /**
+   * @brief Construct a new Tag Node object
+   *
+   * @param context Runtime Context.
+   * @param ctx Tag Context.
+   * @param tagId Tag id to get.
+   * @param props Tag's props to get.
+   */
   TagNode(RuntimeContext* context,
           TagContext* ctx,
           TagID tagId,
@@ -61,6 +73,13 @@ class TagNode final : public IterateNode<VertexID> {
     return ret;
   }
 
+  /**
+   * @brief For resuming from a breakpoint.
+   *
+   * @param key Next key to be read
+   * @param value Next value to be read
+   * @return nebula::cpp2::ErrorCode
+   */
   nebula::cpp2::ErrorCode doExecute(const std::string& key, const std::string& value) {
     key_ = key;
     value_ = value;
@@ -68,6 +87,13 @@ class TagNode final : public IterateNode<VertexID> {
     return nebula::cpp2::ErrorCode::SUCCEEDED;
   }
 
+  /**
+   * @brief Collect tag's prop
+   *
+   * @param nullHandler Callback if prop is null.
+   * @param valueHandler Callback if prop is not null.
+   * @return nebula::cpp2::ErrorCode
+   */
   nebula::cpp2::ErrorCode collectTagPropsIfValid(NullHandler nullHandler,
                                                  PropHandler valueHandler) {
     if (!valid()) {
@@ -76,22 +102,34 @@ class TagNode final : public IterateNode<VertexID> {
     return valueHandler(key_, reader_.get(), props_);
   }
 
-  bool valid() const override { return valid_; }
+  bool valid() const override {
+    return valid_;
+  }
 
   void next() override {
     // tag only has one valid record, so stop iterate
     valid_ = false;
   }
 
-  folly::StringPiece key() const override { return key_; }
+  folly::StringPiece key() const override {
+    return key_;
+  }
 
-  folly::StringPiece val() const override { return value_; }
+  folly::StringPiece val() const override {
+    return value_;
+  }
 
-  RowReader* reader() const override { return reader_.get(); }
+  RowReader* reader() const override {
+    return reader_.get();
+  }
 
-  const std::string& getTagName() const { return tagName_; }
+  const std::string& getTagName() const {
+    return tagName_;
+  }
 
-  TagID tagId() const { return tagId_; }
+  TagID tagId() const {
+    return tagId_;
+  }
 
   void clear() {
     valid_ = false;
@@ -104,7 +142,7 @@ class TagNode final : public IterateNode<VertexID> {
   void resetReader() {
     reader_.reset(*schemas_, value_);
     if (!reader_ ||
-        (ttl_.hasValue() &&
+        (ttl_.has_value() &&
          CommonUtils::checkDataExpiredForTTL(
              schemas_->back().get(), reader_.get(), ttl_.value().first, ttl_.value().second))) {
       reader_.reset();
@@ -120,7 +158,7 @@ class TagNode final : public IterateNode<VertexID> {
   StorageExpressionContext* expCtx_;
   Expression* exp_;
   const std::vector<std::shared_ptr<const meta::NebulaSchemaProvider>>* schemas_ = nullptr;
-  folly::Optional<std::pair<std::string, int64_t>> ttl_;
+  std::optional<std::pair<std::string, int64_t>> ttl_;
   std::string tagName_;
 
   bool valid_ = false;

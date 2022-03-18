@@ -23,6 +23,8 @@ Status GroupByValidator::validateImpl() {
   return Status::OK();
 }
 
+// Validate the yield clause of group by.
+// Check aggregate expression, and add Input/Variable expression for Project
 Status GroupByValidator::validateYield(const YieldClause* yieldClause) {
   std::vector<YieldColumn*> columns;
   if (yieldClause != nullptr) {
@@ -59,7 +61,7 @@ Status GroupByValidator::validateYield(const YieldClause* yieldClause) {
     if (colExpr->kind() == Expression::Kind::kAggregate) {
       auto* aggExpr = static_cast<AggregateExpression*>(colExpr);
       NG_RETURN_IF_ERROR(ExpressionUtils::checkAggExpr(aggExpr));
-    } else if (!ExpressionUtils::isEvaluableExpr(colExpr)) {
+    } else if (!ExpressionUtils::isEvaluableExpr(colExpr, qctx_)) {
       yieldCols_.emplace_back(colExpr);
     }
 
@@ -78,6 +80,8 @@ Status GroupByValidator::validateYield(const YieldClause* yieldClause) {
   return Status::OK();
 }
 
+// Validate group by expression.
+// The expression must contains Input/Variable expression, and shouldn't contains some expressions.
 Status GroupByValidator::validateGroup(const GroupClause* groupClause) {
   if (!groupClause) return Status::OK();
   std::vector<YieldColumn*> columns;
@@ -141,6 +145,10 @@ Status GroupByValidator::toPlan() {
   return Status::OK();
 }
 
+// Check the correctness of group by clause and yield clause.
+// Check expression type,  disable invalid properties.
+// Check group by expression and yield expression, variable expression in yield columns must
+// contains in group by expressions too.
 Status GroupByValidator::groupClauseSemanticCheck() {
   // deduce group items and build outputs_
   DCHECK_EQ(aggOutputColNames_.size(), groupItems_.size());
@@ -173,7 +181,7 @@ Status GroupByValidator::groupClauseSemanticCheck() {
       return false;
     };
     for (auto* expr : yieldCols_) {
-      if (ExpressionUtils::isEvaluableExpr(expr)) {
+      if (ExpressionUtils::isEvaluableExpr(expr, qctx_)) {
         continue;
       }
       FindVisitor visitor(finder);

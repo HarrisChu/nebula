@@ -303,7 +303,7 @@ class QueryTestUtils {
     std::hash<std::string> hash;
     cpp2::GetNeighborsRequest req;
     nebula::storage::cpp2::TraverseSpec traverseSpec;
-    req.set_space_id(1);
+    req.space_id_ref() = 1;
     (*req.column_names_ref()).emplace_back(kVid);
     for (const auto& vertex : vertices) {
       PartitionID partId = (hash(vertex) % totalParts) + 1;
@@ -317,36 +317,37 @@ class QueryTestUtils {
 
     std::vector<cpp2::VertexProp> vertexProps;
     if (tags.empty() && !returnNoneProps) {
-      traverseSpec.set_vertex_props(std::move(vertexProps));
+      traverseSpec.vertex_props_ref() = std::move(vertexProps);
     } else if (!returnNoneProps) {
       for (const auto& tag : tags) {
         TagID tagId = tag.first;
         cpp2::VertexProp tagProp;
-        tagProp.set_tag(tagId);
+        tagProp.tag_ref() = tagId;
         for (const auto& prop : tag.second) {
           (*tagProp.props_ref()).emplace_back(std::move(prop));
         }
         vertexProps.emplace_back(std::move(tagProp));
       }
-      traverseSpec.set_vertex_props(std::move(vertexProps));
+      traverseSpec.vertex_props_ref() = std::move(vertexProps);
     }
 
     std::vector<cpp2::EdgeProp> edgeProps;
     if (edges.empty() && !returnNoneProps) {
-      traverseSpec.set_edge_props(std::move(edgeProps));
+      traverseSpec.edge_props_ref() = std::move(edgeProps);
     } else if (!returnNoneProps) {
       for (const auto& edge : edges) {
         EdgeType edgeType = edge.first;
         cpp2::EdgeProp edgeProp;
-        edgeProp.set_type(edgeType);
+        edgeProp.type_ref() = edgeType;
         for (const auto& prop : edge.second) {
           (*edgeProp.props_ref()).emplace_back(std::move(prop));
         }
         edgeProps.emplace_back(std::move(edgeProp));
       }
-      traverseSpec.set_edge_props(std::move(edgeProps));
+      traverseSpec.edge_props_ref() = std::move(edgeProps);
     }
-    req.set_traverse_spec(std::move(traverseSpec));
+
+    req.traverse_spec_ref() = std::move(traverseSpec);
     return req;
   }
 
@@ -410,6 +411,16 @@ class QueryTestUtils {
     std::sort(actualRows.begin(), actualRows.end(), Descending());
     std::sort(expectRows.begin(), expectRows.end(), Descending());
     EXPECT_EQ(expectRows, actualRows);
+  }
+
+  static void checkStatResponse(const cpp2::LookupIndexResp& resp,
+                                const std::vector<std::string>& expectCols,
+                                const Row& expectRow) {
+    auto columns = (*resp.stat_data_ref()).colNames;
+    EXPECT_EQ(expectCols, columns);
+    auto actualRows = (*resp.stat_data_ref()).rows;
+    EXPECT_EQ(1, actualRows.size());
+    EXPECT_EQ(actualRows[0], expectRow);
   }
 
   static void checkColNames(

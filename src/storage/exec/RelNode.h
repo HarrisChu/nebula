@@ -27,13 +27,25 @@ using PropHandler = std::function<nebula::cpp2::ErrorCode(
 template <typename T>
 class StoragePlan;
 
-// RelNode is shortcut for relational algebra node, each RelNode has an execute
-// method, which will be invoked in dag when all its dependencies have finished
+/**
+ * @brief RelNode is the abbreviation for relational algebra node, each RelNode has an execute
+ * method, which will be invoked in DAG when all its dependencies have finished
+ *
+ * @tparam T is input data type of plan
+ */
 template <typename T>
 class RelNode {
   friend class StoragePlan<T>;
 
  public:
+  /**
+   * @brief start execution with `input` and `partId`
+   *
+   * `execute` function is a warpper of `doExecute`. It add some hook before and after `doExecute`.
+   * And derived class only need override `doExecute`.
+   *
+   *
+   */
   virtual nebula::cpp2::ErrorCode execute(PartitionID partId, const T& input) {
     duration_.resume();
     auto ret = doExecute(partId, input);
@@ -77,7 +89,9 @@ class RelNode {
 
   explicit RelNode(const std::string& name) : name_(name) {}
 
-  const std::string& name() const { return name_; }
+  const std::string& name() const {
+    return name_;
+  }
 
   std::string name_ = "RelNode";
   std::vector<RelNode<T>*> dependencies_;
@@ -90,9 +104,13 @@ class RelNode {
 template <typename T>
 class QueryNode : public RelNode<T> {
  public:
-  const Value& result() { return result_; }
+  const Value& result() {
+    return result_;
+  }
 
-  Value& mutableResult() { return result_; }
+  Value& mutableResult() {
+    return result_;
+  }
 
  protected:
   Value result_;
@@ -114,7 +132,9 @@ class IterateNode : public QueryNode<T>, public StorageIterator {
 
   explicit IterateNode(IterateNode* node) : upstream_(node) {}
 
-  bool valid() const override { return upstream_->valid(); }
+  bool valid() const override {
+    return upstream_->valid();
+  }
 
   void next() override {
     do {
@@ -122,16 +142,24 @@ class IterateNode : public QueryNode<T>, public StorageIterator {
     } while (upstream_->valid() && !check());
   }
 
-  folly::StringPiece key() const override { return upstream_->key(); }
+  folly::StringPiece key() const override {
+    return upstream_->key();
+  }
 
-  folly::StringPiece val() const override { return upstream_->val(); }
+  folly::StringPiece val() const override {
+    return upstream_->val();
+  }
 
   // return the edge row reader which could pass filter
-  RowReader* reader() const override { return upstream_->reader(); }
+  RowReader* reader() const override {
+    return upstream_->reader();
+  }
 
  protected:
   // return true when the iterator points to a valid value
-  virtual bool check() { return true; }
+  virtual bool check() {
+    return true;
+  }
 
   IterateNode* upstream_;
 };

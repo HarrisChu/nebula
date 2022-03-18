@@ -1,3 +1,23 @@
+set(UTIL_TEST_FLAG_DEPS
+    $<TARGET_OBJECTS:graph_flags_obj>
+)
+
+if(ENABLE_STANDALONE_VERSION)
+set(UTIL_TEST_FLAG_DEPS
+    ${UTIL_TEST_FLAG_DEPS}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+)
+endif()
+find_library(Boost_Thread_LIBRARY NAMES libboost_thread.a)
+
+if(Boost_Thread_LIBRARY)
+    mark_as_advanced(
+        Boost_Thread_LIBRARY
+    )
+else()
+    message(FATAL_ERROR "boost_thread doesn't exist")
+endif()
+
 nebula_add_test(
     NAME utils_test
     SOURCES
@@ -5,7 +25,6 @@ nebula_add_test(
         IdGeneratorTest.cpp
     OBJECTS
         $<TARGET_OBJECTS:base_obj>
-        $<TARGET_OBJECTS:concurrent_obj>
         $<TARGET_OBJECTS:datatypes_obj>
         $<TARGET_OBJECTS:expression_obj>
         $<TARGET_OBJECTS:function_manager_obj>
@@ -24,7 +43,6 @@ nebula_add_test(
         $<TARGET_OBJECTS:thread_obj>
         $<TARGET_OBJECTS:file_based_cluster_id_man_obj>
         $<TARGET_OBJECTS:charset_obj>
-        $<TARGET_OBJECTS:encryption_obj>
         $<TARGET_OBJECTS:http_client_obj>
         $<TARGET_OBJECTS:process_obj>
         $<TARGET_OBJECTS:time_utils_obj>
@@ -38,16 +56,21 @@ nebula_add_test(
         $<TARGET_OBJECTS:expr_visitor_obj>
         $<TARGET_OBJECTS:graph_session_obj>
         $<TARGET_OBJECTS:graph_auth_obj>
-        $<TARGET_OBJECTS:graph_flags_obj>
+        ${UTIL_TEST_FLAG_DEPS}
         $<TARGET_OBJECTS:util_obj>
         $<TARGET_OBJECTS:plan_obj>
         $<TARGET_OBJECTS:parser_obj>
         $<TARGET_OBJECTS:graph_context_obj>
         $<TARGET_OBJECTS:memory_obj>
         $<TARGET_OBJECTS:version_obj>
+        $<TARGET_OBJECTS:stats_obj>
+        $<TARGET_OBJECTS:graph_stats_obj>
+        $<TARGET_OBJECTS:meta_client_stats_obj>
+        $<TARGET_OBJECTS:storage_client_stats_obj>
     LIBRARIES
         gtest
         gtest_main
+        ${Boost_Thread_LIBRARY}
         ${THRIFT_LIBRARIES}
         ${PROXYGEN_LIBRARIES}
 )

@@ -33,7 +33,9 @@ class HttpClientHandler : public proxygen::RequestHandler {
 
   void onUpgrade(proxygen::UpgradeProtocol) noexcept override {}
 
-  void requestComplete() noexcept override { delete this; }
+  void requestComplete() noexcept override {
+    delete this;
+  }
 
   void onError(proxygen::ProxygenError error) noexcept override {
     LOG(ERROR) << "HttpClientHandler Error: " << proxygen::getErrorString(error);
@@ -44,7 +46,6 @@ class HttpClientTestEnv : public ::testing::Environment {
   void SetUp() override {
     FLAGS_ws_ip = "127.0.0.1";
     FLAGS_ws_http_port = 0;
-    FLAGS_ws_h2_port = 0;
     LOG(INFO) << "Starting web service...";
     webSvc_ = std::make_unique<WebService>();
 

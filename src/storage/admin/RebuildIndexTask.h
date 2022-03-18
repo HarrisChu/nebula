@@ -17,12 +17,23 @@ namespace storage {
 
 using IndexItems = std::vector<std::shared_ptr<meta::cpp2::IndexItem>>;
 
+/**
+ * @brief Task class to rebuild the index.
+ *
+ */
 class RebuildIndexTask : public AdminTask {
  public:
   RebuildIndexTask(StorageEnv* env, TaskContext&& ctx);
 
-  ~RebuildIndexTask() { LOG(INFO) << "Release Rebuild Task"; }
+  ~RebuildIndexTask() {
+    LOG(INFO) << "Release Rebuild Task";
+  }
 
+  /**
+   * @brief Generate subtasks for rebuilding index.
+   *
+   * @return ErrorOr<nebula::cpp2::ErrorCode, std::vector<AdminSubTask>>
+   */
   ErrorOr<nebula::cpp2::ErrorCode, std::vector<AdminSubTask>> genSubTasks() override;
 
  protected:

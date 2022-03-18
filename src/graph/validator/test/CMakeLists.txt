@@ -26,6 +26,9 @@ set(VALIDATOR_TEST_LIBS
     $<TARGET_OBJECTS:fs_obj>
     $<TARGET_OBJECTS:time_obj>
     $<TARGET_OBJECTS:stats_obj>
+    $<TARGET_OBJECTS:graph_stats_obj>
+    $<TARGET_OBJECTS:meta_client_stats_obj>
+    $<TARGET_OBJECTS:storage_client_stats_obj>
     $<TARGET_OBJECTS:time_obj>
     $<TARGET_OBJECTS:common_thrift_obj>
     $<TARGET_OBJECTS:graph_thrift_obj>
@@ -46,7 +49,6 @@ set(VALIDATOR_TEST_LIBS
     $<TARGET_OBJECTS:wkt_wkb_io_obj>
     $<TARGET_OBJECTS:agg_function_manager_obj>
     $<TARGET_OBJECTS:conf_obj>
-    $<TARGET_OBJECTS:encryption_obj>
     $<TARGET_OBJECTS:http_client_obj>
     $<TARGET_OBJECTS:process_obj>
     $<TARGET_OBJECTS:time_utils_obj>
@@ -57,6 +59,13 @@ set(VALIDATOR_TEST_LIBS
     $<TARGET_OBJECTS:version_obj>
     $<TARGET_OBJECTS:ssl_obj>
 )
+
+if(ENABLE_STANDALONE_VERSION)
+set(VALIDATOR_TEST_LIBS
+    ${VALIDATOR_TEST_LIBS}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+)
+endif()
 
 nebula_add_test(
     NAME

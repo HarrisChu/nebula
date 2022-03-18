@@ -65,10 +65,14 @@ class NebulaKeyUtils final {
                              EdgeRanking rank,
                              const VertexID& dstId,
                              EdgeVerPlaceHolder ev = 1);
+
   static std::string vertexKey(size_t vIdLen,
                                PartitionID partId,
                                const VertexID& vId,
                                char pad = '\0');
+
+  static std::string vertexPrefix(PartitionID partId);
+
   static std::string systemCommitKey(PartitionID partId);
 
   static std::string systemPartKey(PartitionID partId);
@@ -251,7 +255,9 @@ class NebulaKeyUtils final {
    */
   static std::string toLockKey(const folly::StringPiece& rawKey);
 
-  static EdgeVerPlaceHolder getLockVersion(const folly::StringPiece&) { return 0; }
+  static EdgeVerPlaceHolder getLockVersion(const folly::StringPiece&) {
+    return 0;
+  }
 
   static folly::StringPiece lockWithNoVersion(const folly::StringPiece& rawKey) {
     // TODO(liuyu) We should change the method if varint data version
@@ -269,6 +275,10 @@ class NebulaKeyUtils final {
   }
 
   static std::string adminTaskKey(int32_t seqId, JobID jobId, TaskID taskId);
+
+  static std::string dataVersionKey();
+
+  static std::string dataVersionValue();
 
   static_assert(sizeof(NebulaKeyType) == sizeof(PartitionID));
 

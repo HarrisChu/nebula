@@ -14,7 +14,7 @@ Feature: Feature examples
     When executing query:
       """
       MATCH (v:player{name: "Tim Duncan"})
-      RETURN v.name AS Name
+      RETURN v.player.name AS Name
       """
     Then the result should be, in any order:
       | Name         |
@@ -24,8 +24,8 @@ Feature: Feature examples
       SHOW HOSTS
       """
     Then the result should contain:
-      | Host  | Port  | Status   | Leader count | Leader distribution | Partition distribution |
-      | /\w+/ | /\d+/ | "ONLINE" | /\d+/        | /.*/                | /.*/                   |
+      | Host  | Port  | HTTP port | Status   | Leader count | Leader distribution | Partition distribution | Version |
+      | /\w+/ | /\d+/ | /\d+/     | "ONLINE" | /\d+/        | /.*/                | /.*/                   | /.*/    |
     When executing query:
       """
       SHOW HOSTS

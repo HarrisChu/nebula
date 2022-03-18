@@ -5,19 +5,16 @@
 
 #include "meta/processors/zone/AddHostsIntoZoneProcessor.h"
 
-DECLARE_int32(heartbeat_interval_secs);
-
 namespace nebula {
 namespace meta {
 
 void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
-  folly::SharedMutex::WriteHolder zHolder(LockUtils::zoneLock());
-  folly::SharedMutex::WriteHolder mHolder(LockUtils::machineLock());
+  folly::SharedMutex::WriteHolder holder(LockUtils::lock());
   auto hosts = req.get_hosts();
 
   // Confirm that there are no duplicates in the parameters.
   if (std::unique(hosts.begin(), hosts.end()) != hosts.end()) {
-    LOG(ERROR) << "Hosts have duplicated element";
+    LOG(INFO) << "Hosts have duplicated element";
     handleErrorCode(nebula::cpp2::ErrorCode::E_INVALID_PARM);
     onFinished();
     return;
@@ -25,7 +22,7 @@ void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
 
   // Confirm that the parameter is not empty.
   if (hosts.empty()) {
-    LOG(ERROR) << "Hosts is empty";
+    LOG(INFO) << "Hosts is empty";
     handleErrorCode(nebula::cpp2::ErrorCode::E_INVALID_PARM);
     onFinished();
     return;
@@ -39,7 +36,7 @@ void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
     // Ensure that the node is not registered.
     auto machineKey = MetaKeyUtils::machineKey(host.host, host.port);
     if (machineExist(machineKey) == nebula::cpp2::ErrorCode::SUCCEEDED) {
-      LOG(ERROR) << "The host " << host << " have existed!";
+      LOG(INFO) << "The host " << host << " have existed!";
       code = nebula::cpp2::ErrorCode::E_EXISTED;
       break;
     }
@@ -58,7 +55,7 @@ void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
   if (isNew) {
     // If you are creating a new zone, should make sure the zone not existed.
     if (nebula::ok(zoneValueRet)) {
-      LOG(ERROR) << "Zone " << zoneName << " have existed";
+      LOG(INFO) << "Zone " << zoneName << " have existed";
       handleErrorCode(nebula::cpp2::ErrorCode::E_EXISTED);
       onFinished();
       return;
@@ -70,8 +67,8 @@ void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
       if (code == nebula::cpp2::ErrorCode::E_KEY_NOT_FOUND) {
         code = nebula::cpp2::ErrorCode::E_ZONE_NOT_FOUND;
       }
-      LOG(ERROR) << "Get zone " << zoneName << " failed, error "
-                 << apache::thrift::util::enumNameSafe(code);
+      LOG(INFO) << "Get zone " << zoneName << " failed, error "
+                << apache::thrift::util::enumNameSafe(code);
       handleErrorCode(code);
       onFinished();
       return;
@@ -97,8 +94,13 @@ void AddHostsIntoZoneProcessor::process(const cpp2::AddHostsIntoZoneReq& req) {
 
   zoneHosts.insert(zoneHosts.end(), hosts.begin(), hosts.end());
   data.emplace_back(std::move(zoneKey), MetaKeyUtils::zoneVal(std::move(zoneHosts)));
+
   LOG(INFO) << "Add Hosts Into Zone " << zoneName;
-  doSyncPutAndUpdate(std::move(data));
+  auto timeInMilliSec = time::WallClock::fastNowInMilliSec();
+  LastUpdateTimeMan::update(data, timeInMilliSec);
+  auto ret = doSyncPut(std::move(data));
+  handleErrorCode(ret);
+  onFinished();
 }
 
 }  // namespace meta

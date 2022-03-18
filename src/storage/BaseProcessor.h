@@ -30,7 +30,9 @@ class BaseProcessor {
 
   virtual ~BaseProcessor() = default;
 
-  folly::Future<RESP> getFuture() { return promise_.getFuture(); }
+  folly::Future<RESP> getFuture() {
+    return promise_.getFuture();
+  }
 
  protected:
   virtual void onFinished() {
@@ -41,12 +43,12 @@ class BaseProcessor {
       }
     }
 
-    this->result_.set_latency_in_us(this->duration_.elapsedInUSec());
+    this->result_.latency_in_us_ref() = this->duration_.elapsedInUSec();
     if (!profileDetail_.empty()) {
-      this->result_.set_latency_detail_us(std::move(profileDetail_));
+      this->result_.latency_detail_us_ref() = std::move(profileDetail_);
     }
-    this->result_.set_failed_parts(this->codes_);
-    this->resp_.set_result(std::move(this->result_));
+    this->result_.failed_parts_ref() = this->codes_;
+    this->resp_.result_ref() = std::move(this->result_);
     this->promise_.setValue(std::move(this->resp_));
 
     if (counters_) {
@@ -74,10 +76,6 @@ class BaseProcessor {
 
   void doPut(GraphSpaceID spaceId, PartitionID partId, std::vector<kvstore::KV>&& data);
 
-  nebula::cpp2::ErrorCode doSyncPut(GraphSpaceID spaceId,
-                                    PartitionID partId,
-                                    std::vector<kvstore::KV>&& data);
-
   void doRemove(GraphSpaceID spaceId, PartitionID partId, std::vector<std::string>&& keys);
 
   void doRemoveRange(GraphSpaceID spaceId,
@@ -98,6 +96,9 @@ class BaseProcessor {
   void handleLeaderChanged(GraphSpaceID spaceId, PartitionID partId);
 
   void handleAsync(GraphSpaceID spaceId, PartitionID partId, nebula::cpp2::ErrorCode code);
+
+  nebula::cpp2::ErrorCode checkStatType(const meta::SchemaProviderIf::Field& field,
+                                        cpp2::StatType statType);
 
   StatusOr<std::string> encodeRowVal(const meta::NebulaSchemaProvider* schema,
                                      const std::vector<std::string>& propNames,

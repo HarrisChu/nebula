@@ -5,7 +5,6 @@
 SET(CONTEXT_TEST_LIBS
     $<TARGET_OBJECTS:charset_obj>
     $<TARGET_OBJECTS:datatypes_obj>
-    $<TARGET_OBJECTS:encryption_obj>
     $<TARGET_OBJECTS:expression_obj>
     $<TARGET_OBJECTS:function_manager_obj>
     $<TARGET_OBJECTS:wkt_wkb_io_obj>
@@ -42,7 +41,18 @@ SET(CONTEXT_TEST_LIBS
     $<TARGET_OBJECTS:idgenerator_obj>
     $<TARGET_OBJECTS:ssl_obj>
     $<TARGET_OBJECTS:memory_obj>
+    $<TARGET_OBJECTS:stats_obj>
+    $<TARGET_OBJECTS:graph_stats_obj>
+    $<TARGET_OBJECTS:meta_client_stats_obj>
+    $<TARGET_OBJECTS:storage_client_stats_obj>
 )
+
+if(ENABLE_STANDALONE_VERSION)
+set(CONTEXT_TEST_LIBS
+    ${CONTEXT_TEST_LIBS}
+    $<TARGET_OBJECTS:sa_test_graph_flags_obj>
+)
+endif()
 
 nebula_add_test(
     NAME context_test

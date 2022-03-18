@@ -11,6 +11,11 @@
 namespace nebula {
 namespace meta {
 
+using HostParts = std::unordered_map<HostAddr, std::vector<PartitionID>>;
+
+/**
+ * @brief Merge several zones to one zone
+ */
 class MergeZoneProcessor : public BaseProcessor<cpp2::ExecResp> {
  public:
   static MergeZoneProcessor* instance(kvstore::KVStore* kvstore) {
@@ -21,6 +26,14 @@ class MergeZoneProcessor : public BaseProcessor<cpp2::ExecResp> {
 
  private:
   explicit MergeZoneProcessor(kvstore::KVStore* kvstore) : BaseProcessor<cpp2::ExecResp>(kvstore) {}
+
+  /**
+   * @brief Get all parts of a space in each host
+   *
+   * @param spaceId Which space's parts to get
+   * @return ErrorCode or parts of each host
+   */
+  ErrorOr<nebula::cpp2::ErrorCode, HostParts> assembleHostParts(GraphSpaceID spaceId);
 };
 
 }  // namespace meta

@@ -11,9 +11,13 @@
 namespace nebula {
 namespace storage {
 
+/**
+ * @brief Task class to rebuild edge index.
+ *
+ */
 class RebuildEdgeIndexTask : public RebuildIndexTask {
  public:
-  explicit RebuildEdgeIndexTask(StorageEnv* env, TaskContext&& ctx)
+  RebuildEdgeIndexTask(StorageEnv* env, TaskContext&& ctx)
       : RebuildIndexTask(env, std::move(ctx)) {}
 
  private:

@@ -25,8 +25,6 @@ namespace meta {
 using ::testing::DefaultValue;
 using ::testing::NiceMock;
 
-bool gInitialized = false;
-
 class JobManagerTest : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -45,25 +43,27 @@ class JobManagerTest : public ::testing::Test {
     adminClient_ = std::make_unique<NiceMock<MockAdminClient>>();
     DefaultValue<folly::Future<Status>>::SetFactory(
         [] { return folly::Future<Status>(Status::OK()); });
+  }
 
-    jobMgr = JobManager::getInstance();
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> getJobManager() {
+    std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr(
+        new JobManager(), [](JobManager* p) {
+          std::pair<JobManager::JbOp, JobID> pair;
+          while (!p->lowPriorityQueue_->empty()) {
+            p->lowPriorityQueue_->dequeue(pair);
+          }
+          while (!p->highPriorityQueue_->empty()) {
+            p->highPriorityQueue_->dequeue(pair);
+          }
+          delete p;
+        });
     jobMgr->status_ = JobManager::JbmgrStatus::NOT_START;
     jobMgr->kvStore_ = kv_.get();
-    if (!gInitialized) {
-      jobMgr->init(kv_.get());
-      gInitialized = true;
-    }
+    jobMgr->init(kv_.get());
+    return jobMgr;
   }
 
   void TearDown() override {
-    auto cleanUnboundQueue = [](auto& q) {
-      std::pair<JobManager::JbOp, JobID> pair;
-      while (!q.empty()) {
-        q.dequeue(pair);
-      }
-    };
-    cleanUnboundQueue(*jobMgr->lowPriorityQueue_);
-    cleanUnboundQueue(*jobMgr->highPriorityQueue_);
     kv_.reset();
     rootPath_.reset();
   }
@@ -71,22 +71,23 @@ class JobManagerTest : public ::testing::Test {
   std::unique_ptr<fs::TempDir> rootPath_{nullptr};
   std::unique_ptr<kvstore::KVStore> kv_{nullptr};
   std::unique_ptr<AdminClient> adminClient_{nullptr};
-  JobManager* jobMgr{nullptr};
 };
 
-TEST_F(JobManagerTest, addJob) {
+TEST_F(JobManagerTest, AddJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras{"test"};
-  JobDescription job(1, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription job(1, cpp2::JobType::COMPACT, paras);
   auto rc = jobMgr->addJob(job, adminClient_.get());
   ASSERT_EQ(rc, nebula::cpp2::ErrorCode::SUCCEEDED);
 }
 
 TEST_F(JobManagerTest, AddRebuildTagIndexJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // For preventing job schedule in JobManager
   jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
-
+  jobMgr->bgThread_.join();
   std::vector<std::string> paras{"tag_index_name", "test_space"};
-  JobDescription job(11, cpp2::AdminCmd::REBUILD_TAG_INDEX, paras);
+  JobDescription job(11, cpp2::JobType::REBUILD_TAG_INDEX, paras);
   auto rc = jobMgr->addJob(job, adminClient_.get());
   ASSERT_EQ(rc, nebula::cpp2::ErrorCode::SUCCEEDED);
   auto result = jobMgr->runJobInternal(job, JobManager::JbOp::ADD);
@@ -94,11 +95,12 @@ TEST_F(JobManagerTest, AddRebuildTagIndexJob) {
 }
 
 TEST_F(JobManagerTest, AddRebuildEdgeIndexJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // For preventing job schedule in JobManager
   jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
-
+  jobMgr->bgThread_.join();
   std::vector<std::string> paras{"edge_index_name", "test_space"};
-  JobDescription job(11, cpp2::AdminCmd::REBUILD_EDGE_INDEX, paras);
+  JobDescription job(11, cpp2::JobType::REBUILD_EDGE_INDEX, paras);
   auto rc = jobMgr->addJob(job, adminClient_.get());
   ASSERT_EQ(rc, nebula::cpp2::ErrorCode::SUCCEEDED);
   auto result = jobMgr->runJobInternal(job, JobManager::JbOp::ADD);
@@ -106,11 +108,12 @@ TEST_F(JobManagerTest, AddRebuildEdgeIndexJob) {
 }
 
 TEST_F(JobManagerTest, StatsJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // For preventing job schedule in JobManager
   jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
-
+  jobMgr->bgThread_.join();
   std::vector<std::string> paras{"test_space"};
-  JobDescription job(12, cpp2::AdminCmd::STATS, paras);
+  JobDescription job(12, cpp2::JobType::STATS, paras);
   auto rc = jobMgr->addJob(job, adminClient_.get());
   ASSERT_EQ(rc, nebula::cpp2::ErrorCode::SUCCEEDED);
   auto result = jobMgr->runJobInternal(job, JobManager::JbOp::ADD);
@@ -127,18 +130,19 @@ TEST_F(JobManagerTest, StatsJob) {
 }
 
 TEST_F(JobManagerTest, JobPriority) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // For preventing job schedule in JobManager
   jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
-
+  jobMgr->bgThread_.join();
   ASSERT_EQ(0, jobMgr->jobSize());
 
   std::vector<std::string> paras{"test"};
-  JobDescription job1(13, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription job1(13, cpp2::JobType::COMPACT, paras);
   auto rc1 = jobMgr->addJob(job1, adminClient_.get());
   ASSERT_EQ(rc1, nebula::cpp2::ErrorCode::SUCCEEDED);
 
   std::vector<std::string> paras1{"test_space"};
-  JobDescription job2(14, cpp2::AdminCmd::STATS, paras1);
+  JobDescription job2(14, cpp2::JobType::STATS, paras1);
   auto rc2 = jobMgr->addJob(job2, adminClient_.get());
   ASSERT_EQ(rc2, nebula::cpp2::ErrorCode::SUCCEEDED);
 
@@ -157,39 +161,38 @@ TEST_F(JobManagerTest, JobPriority) {
 
   result = jobMgr->try_dequeue(opJobId);
   ASSERT_FALSE(result);
-
-  jobMgr->status_ = JobManager::JbmgrStatus::IDLE;
 }
 
 TEST_F(JobManagerTest, JobDeduplication) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // For preventing job schedule in JobManager
   jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
-
+  jobMgr->bgThread_.join();
   ASSERT_EQ(0, jobMgr->jobSize());
 
   std::vector<std::string> paras{"test"};
-  JobDescription job1(15, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription job1(15, cpp2::JobType::COMPACT, paras);
   auto rc1 = jobMgr->addJob(job1, adminClient_.get());
   ASSERT_EQ(rc1, nebula::cpp2::ErrorCode::SUCCEEDED);
 
   std::vector<std::string> paras1{"test_space"};
-  JobDescription job2(16, cpp2::AdminCmd::STATS, paras1);
+  JobDescription job2(16, cpp2::JobType::STATS, paras1);
   auto rc2 = jobMgr->addJob(job2, adminClient_.get());
   ASSERT_EQ(rc2, nebula::cpp2::ErrorCode::SUCCEEDED);
 
   ASSERT_EQ(2, jobMgr->jobSize());
 
-  JobDescription job3(17, cpp2::AdminCmd::STATS, paras1);
+  JobDescription job3(17, cpp2::JobType::STATS, paras1);
   JobID jId3 = 0;
-  auto jobExist = jobMgr->checkJobExist(job3.getCmd(), job3.getParas(), jId3);
+  auto jobExist = jobMgr->checkJobExist(job3.getJobType(), job3.getParas(), jId3);
   if (!jobExist) {
     auto rc3 = jobMgr->addJob(job3, adminClient_.get());
     ASSERT_EQ(rc3, nebula::cpp2::ErrorCode::SUCCEEDED);
   }
 
-  JobDescription job4(18, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription job4(18, cpp2::JobType::COMPACT, paras);
   JobID jId4 = 0;
-  jobExist = jobMgr->checkJobExist(job4.getCmd(), job4.getParas(), jId4);
+  jobExist = jobMgr->checkJobExist(job4.getJobType(), job4.getParas(), jId4);
   if (!jobExist) {
     auto rc4 = jobMgr->addJob(job4, adminClient_.get());
     ASSERT_NE(rc4, nebula::cpp2::ErrorCode::SUCCEEDED);
@@ -209,18 +212,18 @@ TEST_F(JobManagerTest, JobDeduplication) {
 
   result = jobMgr->try_dequeue(opJobId);
   ASSERT_FALSE(result);
-  jobMgr->status_ = JobManager::JbmgrStatus::IDLE;
 }
 
-TEST_F(JobManagerTest, loadJobDescription) {
+TEST_F(JobManagerTest, LoadJobDescription) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras{"test_space"};
-  JobDescription job1(1, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription job1(1, cpp2::JobType::COMPACT, paras);
   job1.setStatus(cpp2::JobStatus ::RUNNING);
   job1.setStatus(cpp2::JobStatus::FINISHED);
   auto rc = jobMgr->addJob(job1, adminClient_.get());
   ASSERT_EQ(rc, nebula::cpp2::ErrorCode::SUCCEEDED);
   ASSERT_EQ(job1.id_, 1);
-  ASSERT_EQ(job1.cmd_, cpp2::AdminCmd::COMPACT);
+  ASSERT_EQ(job1.type_, cpp2::JobType::COMPACT);
   ASSERT_EQ(job1.paras_[0], "test_space");
 
   auto optJd2Ret = JobDescription::loadJobDescription(job1.id_, kv_.get());
@@ -228,26 +231,27 @@ TEST_F(JobManagerTest, loadJobDescription) {
   auto optJd2 = nebula::value(optJd2Ret);
   ASSERT_EQ(job1.id_, optJd2.id_);
   LOG(INFO) << "job1.id_ = " << job1.id_;
-  ASSERT_EQ(job1.cmd_, optJd2.cmd_);
+  ASSERT_EQ(job1.type_, optJd2.type_);
   ASSERT_EQ(job1.paras_, optJd2.paras_);
   ASSERT_EQ(job1.status_, optJd2.status_);
   ASSERT_EQ(job1.startTime_, optJd2.startTime_);
   ASSERT_EQ(job1.stopTime_, optJd2.stopTime_);
 }
 
-TEST(JobUtilTest, dummy) {
+TEST(JobUtilTest, Dummy) {
   ASSERT_TRUE(JobUtil::jobPrefix().length() + sizeof(size_t) != JobUtil::currJobKey().length());
 }
 
-TEST_F(JobManagerTest, showJobs) {
+TEST_F(JobManagerTest, ShowJobs) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras1{"test_space"};
-  JobDescription jd1(1, cpp2::AdminCmd::COMPACT, paras1);
+  JobDescription jd1(1, cpp2::JobType::COMPACT, paras1);
   jd1.setStatus(cpp2::JobStatus::RUNNING);
   jd1.setStatus(cpp2::JobStatus::FINISHED);
   jobMgr->addJob(jd1, adminClient_.get());
 
   std::vector<std::string> paras2{"test_space"};
-  JobDescription jd2(2, cpp2::AdminCmd::FLUSH, paras2);
+  JobDescription jd2(2, cpp2::JobType::FLUSH, paras2);
   jd2.setStatus(cpp2::JobStatus::RUNNING);
   jd2.setStatus(cpp2::JobStatus::FAILED);
   jobMgr->addJob(jd2, adminClient_.get());
@@ -258,29 +262,30 @@ TEST_F(JobManagerTest, showJobs) {
 
   auto& jobs = nebula::value(statusOrShowResult);
   ASSERT_EQ(jobs[1].get_id(), jd1.id_);
-  ASSERT_EQ(jobs[1].get_cmd(), cpp2::AdminCmd::COMPACT);
+  ASSERT_EQ(jobs[1].get_type(), cpp2::JobType::COMPACT);
   ASSERT_EQ(jobs[1].get_paras()[0], "test_space");
   ASSERT_EQ(jobs[1].get_status(), cpp2::JobStatus::FINISHED);
   ASSERT_EQ(jobs[1].get_start_time(), jd1.startTime_);
   ASSERT_EQ(jobs[1].get_stop_time(), jd1.stopTime_);
 
   ASSERT_EQ(jobs[0].get_id(), jd2.id_);
-  ASSERT_EQ(jobs[0].get_cmd(), cpp2::AdminCmd::FLUSH);
+  ASSERT_EQ(jobs[0].get_type(), cpp2::JobType::FLUSH);
   ASSERT_EQ(jobs[0].get_paras()[0], "test_space");
   ASSERT_EQ(jobs[0].get_status(), cpp2::JobStatus::FAILED);
   ASSERT_EQ(jobs[0].get_start_time(), jd2.startTime_);
   ASSERT_EQ(jobs[0].get_stop_time(), jd2.stopTime_);
 }
 
-TEST_F(JobManagerTest, showJobsFromMultiSpace) {
+TEST_F(JobManagerTest, ShowJobsFromMultiSpace) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras1{"test_space"};
-  JobDescription jd1(1, cpp2::AdminCmd::COMPACT, paras1);
+  JobDescription jd1(1, cpp2::JobType::COMPACT, paras1);
   jd1.setStatus(cpp2::JobStatus::RUNNING);
   jd1.setStatus(cpp2::JobStatus::FINISHED);
   jobMgr->addJob(jd1, adminClient_.get());
 
   std::vector<std::string> paras2{"test_space2"};
-  JobDescription jd2(2, cpp2::AdminCmd::FLUSH, paras2);
+  JobDescription jd2(2, cpp2::JobType::FLUSH, paras2);
   jd2.setStatus(cpp2::JobStatus::RUNNING);
   jd2.setStatus(cpp2::JobStatus::FAILED);
   jobMgr->addJob(jd2, adminClient_.get());
@@ -293,19 +298,22 @@ TEST_F(JobManagerTest, showJobsFromMultiSpace) {
   ASSERT_EQ(jobs.size(), 1);
 
   ASSERT_EQ(jobs[0].get_id(), jd2.id_);
-  ASSERT_EQ(jobs[0].get_cmd(), cpp2::AdminCmd::FLUSH);
+  ASSERT_EQ(jobs[0].get_type(), cpp2::JobType::FLUSH);
   ASSERT_EQ(jobs[0].get_paras()[0], "test_space2");
   ASSERT_EQ(jobs[0].get_status(), cpp2::JobStatus::FAILED);
   ASSERT_EQ(jobs[0].get_start_time(), jd2.startTime_);
   ASSERT_EQ(jobs[0].get_stop_time(), jd2.stopTime_);
 }
 
-HostAddr toHost(std::string strIp) { return HostAddr(strIp, 0); }
+HostAddr toHost(std::string strIp) {
+  return HostAddr(strIp, 0);
+}
 
-TEST_F(JobManagerTest, showJob) {
+TEST_F(JobManagerTest, ShowJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras{"test_space"};
 
-  JobDescription jd(1, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription jd(1, cpp2::JobType::COMPACT, paras);
   jd.setStatus(cpp2::JobStatus::RUNNING);
   jd.setStatus(cpp2::JobStatus::FINISHED);
   jobMgr->addJob(jd, adminClient_.get());
@@ -334,7 +342,7 @@ TEST_F(JobManagerTest, showJob) {
   auto& tasks = nebula::value(showResult).second;
 
   ASSERT_EQ(jobs.get_id(), iJob);
-  ASSERT_EQ(jobs.get_cmd(), cpp2::AdminCmd::COMPACT);
+  ASSERT_EQ(jobs.get_type(), cpp2::JobType::COMPACT);
   ASSERT_EQ(jobs.get_paras()[0], "test_space");
   ASSERT_EQ(jobs.get_status(), cpp2::JobStatus::FINISHED);
   ASSERT_EQ(jobs.get_start_time(), jd.startTime_);
@@ -355,10 +363,11 @@ TEST_F(JobManagerTest, showJob) {
   ASSERT_EQ(tasks[1].get_stop_time(), td2.stopTime_);
 }
 
-TEST_F(JobManagerTest, showJobInOtherSpace) {
+TEST_F(JobManagerTest, ShowJobInOtherSpace) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   std::vector<std::string> paras{"test_space"};
 
-  JobDescription jd(1, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription jd(1, cpp2::JobType::COMPACT, paras);
   jd.setStatus(cpp2::JobStatus::RUNNING);
   jd.setStatus(cpp2::JobStatus::FINISHED);
   jobMgr->addJob(jd, adminClient_.get());
@@ -386,13 +395,15 @@ TEST_F(JobManagerTest, showJobInOtherSpace) {
   ASSERT_TRUE(!nebula::ok(showResult));
 }
 
-TEST_F(JobManagerTest, recoverJob) {
+TEST_F(JobManagerTest, RecoverJob) {
+  std::unique_ptr<JobManager, std::function<void(JobManager*)>> jobMgr = getJobManager();
   // set status to prevent running the job since AdminClient is a injector
-  jobMgr->status_ = JobManager::JbmgrStatus::NOT_START;
+  jobMgr->status_ = JobManager::JbmgrStatus::STOPPED;
+  jobMgr->bgThread_.join();
   auto spaceName = "test_space";
   int32_t nJob = 3;
   for (auto i = 0; i != nJob; ++i) {
-    JobDescription jd(i, cpp2::AdminCmd::FLUSH, {spaceName});
+    JobDescription jd(i, cpp2::JobType::FLUSH, {spaceName});
     jobMgr->save(jd.jobKey(), jd.jobVal());
   }
 
@@ -400,17 +411,17 @@ TEST_F(JobManagerTest, recoverJob) {
   ASSERT_EQ(nebula::value(nJobRecovered), 1);
 }
 
-TEST(JobDescriptionTest, ctor) {
+TEST(JobDescriptionTest, Ctor) {
   std::vector<std::string> paras1{"test_space"};
-  JobDescription jd1(1, cpp2::AdminCmd::COMPACT, paras1);
+  JobDescription jd1(1, cpp2::JobType::COMPACT, paras1);
   jd1.setStatus(cpp2::JobStatus::RUNNING);
   jd1.setStatus(cpp2::JobStatus::FINISHED);
   LOG(INFO) << "jd1 ctored";
 }
 
-TEST(JobDescriptionTest, ctor2) {
+TEST(JobDescriptionTest, Ctor2) {
   std::vector<std::string> paras1{"test_space"};
-  JobDescription jd1(1, cpp2::AdminCmd::COMPACT, paras1);
+  JobDescription jd1(1, cpp2::JobType::COMPACT, paras1);
   jd1.setStatus(cpp2::JobStatus::RUNNING);
   jd1.setStatus(cpp2::JobStatus::FINISHED);
   LOG(INFO) << "jd1 ctored";
@@ -421,9 +432,9 @@ TEST(JobDescriptionTest, ctor2) {
   ASSERT_TRUE(nebula::ok(optJobRet));
 }
 
-TEST(JobDescriptionTest, ctor3) {
+TEST(JobDescriptionTest, Ctor3) {
   std::vector<std::string> paras1{"test_space"};
-  JobDescription jd1(1, cpp2::AdminCmd::COMPACT, paras1);
+  JobDescription jd1(1, cpp2::JobType::COMPACT, paras1);
   jd1.setStatus(cpp2::JobStatus::RUNNING);
   jd1.setStatus(cpp2::JobStatus::FINISHED);
   LOG(INFO) << "jd1 ctored";
@@ -436,23 +447,23 @@ TEST(JobDescriptionTest, ctor3) {
   ASSERT_TRUE(nebula::ok(optJobRet));
 }
 
-TEST(JobDescriptionTest, parseKey) {
+TEST(JobDescriptionTest, ParseKey) {
   int32_t iJob = std::pow(2, 16);
   std::vector<std::string> paras{"test_space"};
-  JobDescription jd(iJob, cpp2::AdminCmd::COMPACT, paras);
+  JobDescription jd(iJob, cpp2::JobType::COMPACT, paras);
   auto sKey = jd.jobKey();
   ASSERT_EQ(iJob, jd.getJobId());
-  ASSERT_EQ(cpp2::AdminCmd::COMPACT, jd.getCmd());
+  ASSERT_EQ(cpp2::JobType::COMPACT, jd.getJobType());
 
   folly::StringPiece spKey(&sKey[0], sKey.length());
   auto parsedKeyId = JobDescription::parseKey(spKey);
   ASSERT_EQ(iJob, parsedKeyId);
 }
 
-TEST(JobDescriptionTest, parseVal) {
+TEST(JobDescriptionTest, ParseVal) {
   int32_t iJob = std::pow(2, 15);
   std::vector<std::string> paras{"nba"};
-  JobDescription jd(iJob, cpp2::AdminCmd::FLUSH, paras);
+  JobDescription jd(iJob, cpp2::JobType::FLUSH, paras);
   auto status = cpp2::JobStatus::FINISHED;
   jd.setStatus(cpp2::JobStatus::RUNNING);
   jd.setStatus(status);
@@ -462,14 +473,14 @@ TEST(JobDescriptionTest, parseVal) {
   auto strVal = jd.jobVal();
   folly::StringPiece rawVal(&strVal[0], strVal.length());
   auto parsedVal = JobDescription::parseVal(rawVal);
-  ASSERT_EQ(cpp2::AdminCmd::FLUSH, std::get<0>(parsedVal));
+  ASSERT_EQ(cpp2::JobType::FLUSH, std::get<0>(parsedVal));
   ASSERT_EQ(paras, std::get<1>(parsedVal));
   ASSERT_EQ(status, std::get<2>(parsedVal));
   ASSERT_EQ(startTime, std::get<3>(parsedVal));
   ASSERT_EQ(stopTime, std::get<4>(parsedVal));
 }
 
-TEST(TaskDescriptionTest, ctor) {
+TEST(TaskDescriptionTest, Ctor) {
   int32_t iJob = std::pow(2, 4);
   int32_t iTask = 0;
   auto dest = toHost("");
@@ -483,7 +494,7 @@ TEST(TaskDescriptionTest, ctor) {
   ASSERT_EQ(status, td.status_);
 }
 
-TEST(TaskDescriptionTest, parseKey) {
+TEST(TaskDescriptionTest, ParseKey) {
   int32_t iJob = std::pow(2, 5);
   int32_t iTask = 0;
   std::string dest{"127.0.0.1"};
@@ -496,7 +507,7 @@ TEST(TaskDescriptionTest, parseKey) {
   ASSERT_EQ(iTask, std::get<1>(tup));
 }
 
-TEST(TaskDescriptionTest, parseVal) {
+TEST(TaskDescriptionTest, ParseVal) {
   int32_t iJob = std::pow(2, 5);
   int32_t iTask = 0;
   std::string dest{"127.0.0.1"};
@@ -516,7 +527,7 @@ TEST(TaskDescriptionTest, parseVal) {
   ASSERT_EQ(td.stopTime_, std::get<3>(parsedVal));
 }
 
-TEST(TaskDescriptionTest, ctor2) {
+TEST(TaskDescriptionTest, Ctor2) {
   int32_t iJob = std::pow(2, 6);
   int32_t iTask = 0;
   auto dest = toHost("127.0.0.1");

@@ -3,7 +3,8 @@
  * This source code is licensed under Apache 2.0 License.
  */
 
-#pragma once
+#ifndef COMMON_GEO_GEOINDEX_H
+#define COMMON_GEO_GEOINDEX_H
 
 #include <s2/s2region_coverer.h>
 
@@ -24,8 +25,8 @@ namespace geo {
 
 struct RegionCoverParams {
   // TODO(jie): Find the best default params
-  int minCellLevel_ = 4;
-  int maxCellLevel_ = 23;  // About 1m
+  int minCellLevel_ = 0;
+  int maxCellLevel_ = 30;  // About 1m
   int maxCellNum_ = 8;
 
   RegionCoverParams() = default;
@@ -52,7 +53,9 @@ struct ScanRange {
 
   explicit ScanRange(uint64_t v) : rangeMin(v), isRangeScan(false) {}
 
-  nebula::storage::cpp2::IndexColumnHint toIndexColumnHint();
+  bool operator==(const ScanRange& rhs) const;
+
+  nebula::storage::cpp2::IndexColumnHint toIndexColumnHint() const;
 };
 
 class GeoIndex {
@@ -82,6 +85,7 @@ class GeoIndex {
 
  private:
   RegionCoverParams rcParams_;
+  // pointsOnly_ indicates whether the indexed column only has points.
   // For the column Geography(Point), we don't need to build ancestor cells
   bool pointsOnly_{false};
 };
@@ -98,3 +102,4 @@ struct hash<S2CellId> {
 };
 
 }  // namespace std
+#endif
