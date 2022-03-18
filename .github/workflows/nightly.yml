@@ -64,8 +64,7 @@ jobs:
   docker:
     name: build docker image
     runs-on: [self-hosted, nebula]
-    env:
-      DOCKERHUB_ORG: harrischu
+
 
     steps:
       - uses: webiny/action-post-run@2.0.1
