@@ -84,7 +84,7 @@ jobs:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${DOCKERHUB_ORG}/nebula-graphd:nightly
+            ${{ DOCKERHUB_ORG }}/nebula-graphd:nightly
           target: graphd
           push: true
       - uses: docker/build-push-action@v2
@@ -93,7 +93,7 @@ jobs:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${DOCKERHUB_ORG}/nebula-storaged:nightly
+            ${{ DOCKERHUB_ORG }}/nebula-storaged:nightly
           target: storaged
           push: true
       - uses: docker/build-push-action@v2
@@ -102,7 +102,7 @@ jobs:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${DOCKERHUB_ORG}/nebula-metad:nightly
+            ${{ DOCKERHUB_ORG }}/nebula-metad:nightly
           target: metad
           push: true
       - uses: docker/build-push-action@v2
@@ -111,7 +111,7 @@ jobs:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${DOCKERHUB_ORG}/nebula-tools:nightly
+            ${{ DOCKERHUB_ORG }}/nebula-tools:nightly
           target: tools
           push: true
 
