@@ -1,12 +1,11 @@
-name: rc
+name: manual
 
 on:
-  push:
-    branches:
-      - 'v[0-9]+.*'
+  workflow_dispatch:
+    
 
 concurrency:
-  group: rc
+  group: nightly
   cancel-in-progress: true
 
 defaults:
@@ -24,14 +23,11 @@ jobs:
           - ubuntu1604
           - ubuntu1804
           - ubuntu2004
+          # - centos6
           - centos7
           - centos8
     container:
-      image: vesoft/nebula-dev:${{ matrix.os }}
-    env:
-      BUILD_DIR: ./pkg-build
-      CPACK_DIR: ./pkg-build/cpack_output
-      SYMS_DIR: ./pkg-build/symbols
+      image: harrischu/nebula-dev:${{ matrix.os }}
     steps:
       - uses: webiny/action-post-run@2.0.1
         with:
@@ -40,135 +36,96 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: '^1.16.7'
-      - uses: ./.github/actions/tagname-action
-        id: tag
       - name: package
-        run: ./package/package.sh -v ${{ steps.tag.outputs.tagnum }} -t RelWithDebInfo -r OFF -p ON -s TRUE
+        run: ./package/package.sh
       - name: output some vars
+        id: vars
+        env:
+          SHA_EXT: sha256sum.txt
         run: |
-          tar zcf ${{ env.CPACK_DIR }}/nebula-graph-${{ steps.tag.outputs.tagnum }}.tar.gz --exclude=${{ env.BUILD_DIR }} ./*
-          find ${{ env.CPACK_DIR }} -type f \( -iname \*.deb -o -iname \*.rpm -o -iname \*.tar.gz \) -exec bash -c "sha256sum {} > {}.sha256sum.txt" \;
+          find pkg-build/cpack_output -type f \( -iname \*.deb -o -iname \*.rpm -o -iname \*.tar.gz \) -exec bash -c "sha256sum {} > {}.sha256sum.txt" \;
+          subdir=$(date -u +%Y.%m.%d)
+          echo "::set-output name=subdir::$subdir"
+      - uses: actions/upload-artifact@v1
+        with:
+          name: ${{ matrix.os }}-nightly
+          path: pkg-build/cpack_output
       - uses: ./.github/actions/upload-to-oss-action
         with:
           key-id: ${{ secrets.OSS_ID }}
           key-secret: ${{ secrets.OSS_SECRET }}
           endpoint: ${{ secrets.OSS_ENDPOINT }}
           bucket: nebula-graph
-          asset-path: ${{ env.CPACK_DIR }}
-          target-path: rc/${{ steps.tag.outputs.tagnum }}
-      - uses: ./.github/actions/upload-to-oss-action
-        with:
-          key-id: ${{ secrets.OSS_ID }}
-          key-secret: ${{ secrets.OSS_SECRET }}
-          endpoint: ${{ secrets.OSS_ENDPOINT }}
-          bucket: nebula-graph
-          asset-path: ${{ env.SYMS_DIR }}
-          target-path: rc/${{ steps.tag.outputs.tagnum }}/symbols
+          asset-path: pkg-build/cpack_output
+          target-path: package/nightly/${{ steps.vars.outputs.subdir }}
 
-  docker_build:
-    name: docker-build
+  docker:
+    name: build docker image
     runs-on: [self-hosted, nebula]
     steps:
       - uses: webiny/action-post-run@2.0.1
         with:
           run: sh -c "find . -mindepth 1 -delete"
       - uses: actions/checkout@v2
-      - uses: ./.github/actions/tagname-action
-        id: tagname
-      - id: docker
-        run: |
-          majorver=$(git tag -l --sort=v:refname | tail -n1 | cut -f1 -d".")
-          tag=""
-          if [[ $majorver == ${{ steps.tagname.outputs.majorver }} ]]; then
-            tag="${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-${{ matrix.service }}:latest"
-          fi
-          echo "::set-output name=tag::$tag"
       - uses: docker/setup-qemu-action@v1
       - uses: docker/setup-buildx-action@v1
       - uses: docker/login-action@v1
         with:
-          registry: ${{ secrets.HARBOR_REGISTRY }}
-          username: ${{ secrets.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       - uses: docker/build-push-action@v2
         with:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-graphd:${{ steps.tagname.outputs.tag }}
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-graphd:${{ steps.tagname.outputs.majorver }}
-            ${{ steps.docker.outputs.tag }}
-          push: true
+            harrischu/nebula-graphd:nightly
           target: graphd
+          push: true
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
-          build-args: |
-            BRANCH=${{ steps.tagname.outputs.tag }}
-            VERSION=${{ steps.tagname.outputs.tagnum }}
-
       - uses: docker/build-push-action@v2
         with:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-storaged:${{ steps.tagname.outputs.tag }}
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-storaged:${{ steps.tagname.outputs.majorver }}
-            ${{ steps.docker.outputs.tag }}
-          push: true
+            harrischu/nebula-storaged:nightly
           target: storaged
           cache-from: type=local,src=/tmp/.buildx-cache
-          build-args: |
-            BRANCH=${{ steps.tagname.outputs.tag }}
-            VERSION=${{ steps.tagname.outputs.tagnum }}
-
+          push: true
       - uses: docker/build-push-action@v2
         with:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-metad:${{ steps.tagname.outputs.tag }}
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-metad:${{ steps.tagname.outputs.majorver }}
-            ${{ steps.docker.outputs.tag }}
-          push: true
+            harrischu/nebula-metad:nightly
           target: metad
           cache-from: type=local,src=/tmp/.buildx-cache
-          build-args: |
-            BRANCH=${{ steps.tagname.outputs.tag }}
-            VERSION=${{ steps.tagname.outputs.tagnum }}
-      
+          push: true
       - uses: docker/build-push-action@v2
         with:
           context: .
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-tools:${{ steps.tagname.outputs.tag }}
-            ${{ secrets.HARBOR_REGISTRY }}/vesoft/nebula-tools:${{ steps.tagname.outputs.majorver }}
-            ${{ steps.docker.outputs.tag }}
-          push: true
+            harrischu/nebula-tools:nightly
           target: tools
           cache-from: type=local,src=/tmp/.buildx-cache
-          build-args: |
-            BRANCH=${{ steps.tagname.outputs.tag }}
-            VERSION=${{ steps.tagname.outputs.tagnum }}
+          push: true
 
-  test:
-    name: test
+  coverage:
+    name: coverage
     runs-on: [self-hosted, nebula]
     strategy:
       fail-fast: false
       matrix:
         os:
-          - ubuntu1804
           - ubuntu2004
-          - centos7
-          - centos8
         compiler:
-          - gcc-9.3
+          - gcc-9.2
     container:
-      image: vesoft/nebula-dev:${{ matrix.os }}
+      image: harrischu/nebula-dev:${{ matrix.os }}
       env:
         CCACHE_DIR: /tmp/ccache/nebula/${{ matrix.os }}-${{ matrix.compiler }}
         CCACHE_MAXSIZE: 8G
@@ -189,8 +146,11 @@ jobs:
         id: cmake
         run: |
           cmake \
-              -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+              -DCMAKE_CXX_COMPILER=$TOOLSET_CLANG_DIR/bin/g++ \
+              -DCMAKE_C_COMPILER=$TOOLSET_CLANG_DIR/bin/gcc \
+              -DCMAKE_BUILD_TYPE=Debug \
               -DENABLE_TESTING=on \
+              -DENABLE_COVERAGE=on \
               -B build
           echo "::set-output name=j::8"
       - name: Make
@@ -224,6 +184,13 @@ jobs:
           make RM_DIR=false down
         working-directory: tests/
         timeout-minutes: 2
+      - name: coverage
+        run: |
+            ~/.local/bin/fastcov -d build -l -o fastcov.info -p --exclude /usr/include --exclude=/opt/vesoft --exclude scanner.lex
+      - uses: codecov/codecov-action@v2
+        with:
+          files: fastcov.info
+          fail_ci_if_error: false
       - name: Upload logs
         uses: actions/upload-artifact@v2
         if: ${{ failure() }}
