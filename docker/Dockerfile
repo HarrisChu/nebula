@@ -4,6 +4,8 @@ ARG BRANCH=master
 ARG VERSION=
 COPY . /home/nebula/BUILD
 
+RUN --mount=type=cache,target=/root/.ccache
+
 RUN cd /home/nebula/BUILD/package \
   && [[ -z "${VERSION}" ]] \
   && ./package.sh -n OFF -b ${BRANCH} -t RelWithDebInfo -s TRUE -c OFF \
