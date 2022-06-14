@@ -62,6 +62,7 @@ jobs:
   docker:
     name: build docker image
     runs-on: [self-hosted, nebula]
+    needs: package
     strategy:
       fail-fast: false
       matrix:
