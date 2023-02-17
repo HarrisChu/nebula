@@ -8,6 +8,11 @@ on:
       - labeled
       - unlabeled
       - closed
+  
+  pull_request:
+    types:
+      - opened
+      - edited
     
 env:
   GH_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -19,4 +24,4 @@ jobs:
     name: auto label
     runs-on: ubuntu-latest
     steps:
-      - uses: HarrisChu/auto_label@v1
+      - uses: HarrisChu/auto_label@v1_test
